@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<title>📚 ระบบคลังข้อสอบออนไลน์</title>
+
+<!-- ── CDN ── -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Kanit:wght@600;700&display=swap" rel="stylesheet"/>
+
+<style>
+/* ══════════════════════════════════════════════
+   GLOBAL STYLES
+══════════════════════════════════════════════ */
+:root{
+  --c-bg:#0a0a14; --c-surface:rgba(255,255,255,.05);
+  --c-border:rgba(255,255,255,.10); --c-purple:#7c3aed;
+  --c-cyan:#22d3ee; --c-text:#f1f5f9; --c-muted:rgba(241,245,249,.5);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  font-family:'Sarabun',sans-serif;background:var(--c-bg);color:var(--c-text);
+  min-height:100svh;overflow-x:hidden;
+  background-image:
+    radial-gradient(ellipse at 20% 0%,rgba(124,58,237,.15) 0%,transparent 50%),
+    radial-gradient(ellipse at 80% 100%,rgba(34,211,238,.08) 0%,transparent 50%);
+}
+.font-kanit{font-family:'Kanit',sans-serif}
+
+/* Glass */
+.glass{background:rgba(255,255,255,.04);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+
+/* Gradient button */
+.btn-grad{
+  background:linear-gradient(135deg,#7c3aed 0%,#4f46e5 50%,#0ea5e9 100%);
+  color:#fff;border:none;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;
+}
+.btn-grad:hover{filter:brightness(1.12);transform:translateY(-1px)}
+.btn-grad:active{transform:scale(.98)}
+.btn-grad::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.15),transparent);pointer-events:none}
+.btn-grad:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+/* Tab */
+.tab-btn{background:rgba(255,255,255,.06);color:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.10);cursor:pointer;transition:all .2s}
+.tab-btn.active{background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border-color:transparent;box-shadow:0 4px 14px rgba(124,58,237,.35)}
+
+/* Choice */
+.choice-btn{cursor:pointer;transition:all .2s}
+.choice-btn.sel{border-color:#7c3aed!important;background:rgba(124,58,237,.25)!important}
+.choice-btn.ok{border-color:#22c55e!important;background:rgba(34,197,94,.15)!important;color:#86efac!important}
+.choice-btn.no{border-color:#ef4444!important;background:rgba(239,68,68,.15)!important;color:#fca5a5!important}
+
+/* Quiz card */
+.quiz-card{transition:all .25s}
+.quiz-card:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(124,58,237,.2)}
+
+/* Scrollbar */
+.no-scroll::-webkit-scrollbar{display:none}
+.no-scroll{-ms-overflow-style:none;scrollbar-width:none}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:rgba(124,58,237,.4);border-radius:4px}
+
+/* Animations */
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes bounceIn{0%{opacity:0;transform:scale(.5)}60%{transform:scale(1.1)}100%{opacity:1;transform:scale(1)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.anim-fade{animation:fadeIn .4s ease both}
+.anim-bounce{animation:bounceIn .5s ease both}
+.anim-slide{animation:slideUp .35s ease both}
+.anim-spin{animation:spin 1s linear infinite}
+
+/* Skeleton */
+.skeleton{
+  background:linear-gradient(90deg,rgba(255,255,255,.05) 25%,rgba(255,255,255,.12) 50%,rgba(255,255,255,.05) 75%);
+  background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px;
+}
+
+/* Drag & Drop */
+.drag-item{cursor:grab;transition:all .2s;user-select:none;touch-action:none}
+.drag-item:active{cursor:grabbing;transform:scale(1.05);opacity:.8}
+.drop-zone{border:2px dashed rgba(255,255,255,.2);transition:all .2s;min-height:48px;border-radius:12px}
+.drop-zone.over{border-color:#7c3aed;background:rgba(124,58,237,.15)}
+.drop-zone.matched{border-color:#22c55e;background:rgba(34,197,94,.1)}
+
+/* Modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);z-index:100;display:flex;align-items:flex-end;justify-content:center;padding:16px;animation:fadeIn .2s ease}
+.modal-sheet{background:#12121e;border:1px solid rgba(255,255,255,.10);border-radius:24px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;animation:slideUp .3s ease}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,.08);position:sticky;top:0;background:#12121e;z-index:10}
+
+/* Form */
+.form-inp{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:10px 14px;color:#fff;font-size:14px;font-family:'Sarabun',sans-serif;transition:all .2s;outline:none}
+.form-inp:focus{border-color:#7c3aed;box-shadow:0 0 0 3px rgba(124,58,237,.15)}
+.form-inp::placeholder{color:rgba(255,255,255,.28)}
+
+/* Table */
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{text-align:left;padding:12px 16px;background:rgba(255,255,255,.04);color:rgba(255,255,255,.5);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.08)}
+.tbl td{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:middle}
+.tbl tr:hover td{background:rgba(255,255,255,.03)}
+
+/* Badge */
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}
+.bg-green{background:rgba(34,197,94,.15);color:#86efac}
+.bg-red{background:rgba(239,68,68,.15);color:#fca5a5}
+.bg-amber{background:rgba(245,158,11,.15);color:#fcd34d}
+.bg-blue{background:rgba(59,130,246,.15);color:#93c5fd}
+.bg-purple{background:rgba(124,58,237,.15);color:#c4b5fd}
+
+/* Stat card */
+.stat-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px;transition:all .2s}
+.stat-card:hover{border-color:rgba(124,58,237,.3);transform:translateY(-2px)}
+
+/* Admin sidebar */
+.adm-nav{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:12px;cursor:pointer;transition:all .2s;font-size:14px;color:rgba(255,255,255,.6);text-decoration:none}
+.adm-nav:hover{background:rgba(255,255,255,.06);color:#fff}
+.adm-nav.active{background:rgba(124,58,237,.25);color:#a78bfa}
+
+/* Line clamp */
+.lc2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+</style>
+</head>
+<body>
+
+<!-- ── Toast container ── -->
+<div id="toasts" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+<!-- ── App root ── -->
+<div id="app"></div>
+
+<script>
+'use strict';
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  ⚙️  CONFIG — แก้ค่า 2 บรรทัดนี้เท่านั้น                   ║
+// ╚══════════════════════════════════════════════════════════════╝
+const LIFF_ID        = '2009785071-wSkgakrd';                         // ← ใส่ LIFF ID 
+const SUPABASE_URL   = 'https://bixtzckflnayzyuvqisl.supabase.co';     // ← ใส่ URL
+const SUPABASE_KEY   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpeHR6Y2tmbG5heXp5dXZxaXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQxMTIyMjksImV4cCI6MjA2OTY4ODIyOX0.GiES3FL3RkQ2QBHFbDCOSaFMoXtAYhA__9YN5L1xM54';                        // ← ใส่ Anon Key
+// Edge Function base URL (ชื่อ function = "api")
+const API_BASE       = `${SUPABASE_URL}/functions/v1/miniapp-quiz`;
+
+// ══════════════════════════════════════════════════════════════
+// SUPABASE CLIENT
+// ══════════════════════════════════════════════════════════════
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+async function api(route, opts = {}) {
+  const url = `${API_BASE}/${route}`;
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts,
+  });
+  return res.json();
+}
+
+// ══════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════
+let USER      = null;   // LINE Profile
+let IS_ADMIN  = false;
+let QUIZ_SET  = null;   // ชุดข้อสอบที่กำลังทำ
+let SESSION   = null;   // quiz session ปัจจุบัน
+let QUESTIONS = [];     // คำถาม (สุ่มแล้ว)
+let Q_IDX     = 0;
+let ANSWERS   = {};     // { questionId: { choiceId?, text? } }
+let T_START   = 0;      // เวลาเริ่ม session
+let TIMER_IV  = null;   // interval timer
+let LB_CHAN   = null;   // realtime channel
+let VIEW      = 'home'; // admin view
+let SEL_QUIZ  = null;   // quiz ที่เลือกใน admin
+
+// ══════════════════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════════════════
+const ICONS = {
+  success:'<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>',
+  error:'<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>',
+  warning:'<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>',
+  info:'<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+};
+const TCLS = {success:'bg-emerald-500 text-white',error:'bg-red-500 text-white',warning:'bg-amber-400 text-amber-900',info:'bg-blue-500 text-white'};
+
+function toast(msg, type='info', ms=3200) {
+  const c = document.getElementById('toasts');
+  const t = document.createElement('div');
+  t.className=`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg font-medium text-sm
+    ${TCLS[type]||TCLS.info} transform translate-x-full transition-all duration-300 max-w-xs`;
+  t.innerHTML=`${ICONS[type]||ICONS.info}<span class="flex-1">${msg}</span><button onclick="this.parentElement.remove()" class="opacity-70 hover:opacity-100 ml-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>`;
+  c.appendChild(t);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>t.classList.replace('translate-x-full','translate-x-0')));
+  setTimeout(()=>{t.classList.add('translate-x-full','opacity-0');setTimeout(()=>t.remove(),300)},ms);
+}
+
+// ══════════════════════════════════════════════════════════════
+// LOADER / CONFETTI
+// ══════════════════════════════════════════════════════════════
+function setApp(html) { document.getElementById('app').innerHTML = html; }
+
+function showLoader(msg='กำลังโหลด...') {
+  setApp(`<div class="min-h-screen flex flex-col items-center justify-center">
+    <div class="relative mb-8 w-20 h-20">
+      <div class="absolute inset-0 rounded-full border-4 border-t-purple-500 border-r-transparent border-b-transparent border-l-transparent anim-spin"></div>
+      <div class="absolute inset-0 flex items-center justify-center text-2xl">📚</div>
+    </div>
+    <p class="text-purple-200 font-medium animate-pulse" id="lmsg">${msg}</p>
+  </div>`);
+}
+function updLoader(msg) { const e=document.getElementById('lmsg'); if(e) e.textContent=msg; }
+
+function confetti(ms=3000) {
+  const cv=document.createElement('canvas');
+  cv.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;';
+  document.body.appendChild(cv);
+  const ctx=cv.getContext('2d'), W=cv.width=innerWidth, H=cv.height=innerHeight;
+  const COLS=['#FF6B6B','#4ECDC4','#FFE66D','#A8E6CF','#FF8B94','#C3A6FF','#6BCB77'];
+  const P=Array.from({length:150},()=>({x:Math.random()*W,y:-20-Math.random()*100,w:8+Math.random()*8,h:4+Math.random()*4,c:COLS[Math.floor(Math.random()*7)],vx:(Math.random()-.5)*4,vy:3+Math.random()*5,r:Math.random()*Math.PI*2,rs:(Math.random()-.5)*.2,a:1}));
+  let s=null;
+  (function draw(t){
+    if(!s)s=t; ctx.clearRect(0,0,W,H);
+    P.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.1;p.r+=p.rs;if(t-s>ms-1000)p.a=Math.max(0,p.a-.02);
+      ctx.save();ctx.globalAlpha=p.a;ctx.translate(p.x,p.y);ctx.rotate(p.r);ctx.fillStyle=p.c;ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();
+    });
+    if(t-s<ms+500)requestAnimationFrame(draw);else cv.remove();
+  })(performance.now());
+}
+
+function skeletons(n=3){return Array(n).fill(`<div class="skeleton rounded-2xl h-32 mb-3"></div>`).join('')}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function fmtT(s){return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`}
+function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
+
+// ══════════════════════════════════════════════════════════════
+// INIT — LINE LIFF
+// ══════════════════════════════════════════════════════════════
+async function init() {
+  showLoader('กำลังยืนยันตัวตนผ่าน LINE...');
+  try {
+    await liff.init({ liffId: LIFF_ID, withLoginOnExternalBrowser: true });
+    await liff.ready;
+    if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+
+    // Friendship
+    try {
+      const f = await liff.getFriendship();
+      if (!f.friendFlag) {
+        if (typeof liff.requestFriendship === 'function') await liff.requestFriendship();
+        const v = await liff.getFriendship();
+        toast(v.friendFlag ? 'ขอบคุณที่เพิ่มเราเป็นเพื่อน! 🎉' : 'ยังไม่ได้เพิ่ม OA เป็นเพื่อน', v.friendFlag ? 'success' : 'warning');
+      }
+    } catch(e){ console.warn('friendship',e); }
+
+    USER = await liff.getProfile();
+    updLoader('กำลังตรวจสอบข้อมูล...');
+
+    // Upsert profile + get role
+    const res = await api('upsert-profile', {
+      method: 'POST',
+      body: JSON.stringify({ userId: USER.userId, displayName: USER.displayName, pictureUrl: USER.pictureUrl, statusMessage: USER.statusMessage }),
+    });
+    IS_ADMIN = res.role === 'admin';
+
+    // ถ้า URL มี ?admin=1 และเป็น admin → ไปหน้า admin
+    if (new URLSearchParams(location.search).get('admin') === '1' && IS_ADMIN) {
+      renderAdmin();
+    } else {
+      renderHome();
+    }
+  } catch(e) {
+    setApp(`<div class="min-h-screen flex items-center justify-center p-6"><div class="text-center"><div class="text-5xl mb-4">⚠️</div>
+      <h2 class="font-bold text-xl mb-2 text-red-400">เกิดข้อผิดพลาด</h2>
+      <p class="text-white/60 mb-6 text-sm">${esc(e.message)}</p>
+      <button onclick="location.reload()" class="px-6 py-3 btn-grad rounded-2xl font-semibold">ลองใหม่</button>
+    </div></div>`);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// HOME — เลือกแบบทดสอบ
+// ══════════════════════════════════════════════════════════════
+let ALL_QUIZ = [], FILTER_TYPE = 'all';
+
+async function renderHome() {
+  const av = USER.pictureUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(USER.displayName)}&background=6366f1&color=fff`;
+  setApp(`
+  <nav class="sticky top-0 z-40 glass border-b border-white/10 px-4 py-3">
+    <div class="flex items-center justify-between max-w-lg mx-auto">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center shadow-lg">📚</div>
+        <div><h1 class="font-bold text-sm font-kanit">คลังข้อสอบออนไลน์</h1><p class="text-xs text-white/50">สวัสดี, ${esc(USER.displayName)}</p></div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="renderMyScores()" class="p-2 rounded-xl hover:bg-white/10 transition text-white/60 hover:text-white" title="คะแนนของฉัน">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        </button>
+        ${IS_ADMIN ? `<button onclick="renderAdmin()" class="p-2 rounded-xl hover:bg-white/10 transition text-white/60 hover:text-white" title="Admin"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></button>` : ''}
+        <img src="${av}" class="w-9 h-9 rounded-full border-2 border-purple-500/50 object-cover" onerror="this.src='https://ui-avatars.com/api/?name=U&background=6366f1&color=fff'" alt=""/>
+      </div>
+    </div>
+  </nav>
+  <div class="max-w-lg mx-auto px-4 py-6">
+    <div class="rounded-3xl p-6 mb-6 relative overflow-hidden" style="background:linear-gradient(135deg,rgba(124,58,237,.4),rgba(14,165,233,.2));border:1px solid rgba(124,58,237,.3)">
+      <h2 class="text-2xl font-bold font-kanit mb-1">พร้อมเรียนรู้แล้วหรือยัง? 🚀</h2>
+      <p class="text-white/70 text-sm">เลือกแบบทดสอบที่ต้องการทำ</p>
+    </div>
+    <div class="flex gap-2 mb-5 overflow-x-auto pb-1 no-scroll">
+      ${['all','pretest','posttest','practice'].map((t,i)=>`<button onclick="filterQuiz('${t}')" id="tab-${t}" class="tab-btn ${t==='all'?'active':''} whitespace-nowrap px-4 py-2 rounded-xl text-sm font-semibold">${['ทั้งหมด','ก่อนเรียน','หลังเรียน','ฝึกหัด'][i]}</button>`).join('')}
+    </div>
+    <div id="quiz-grid">${skeletons()}</div>
+  </div>`);
+
+  try {
+    const { data } = await sb.from('quiz_sets')
+      .select('*'*,quiz_units(title)')
+      .eq('is_published',true).eq('is_active',true).order('created_at');
+    ALL_QUIZ = data || [];
+    renderQuizCards(ALL_QUIZ);
+  } catch(e){ toast('โหลดข้อมูลไม่สำเร็จ','error'); }
+}
+
+function filterQuiz(type) {
+  FILTER_TYPE = type;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(`tab-${type}`)?.classList.add('active');
+  renderQuizCards(type==='all' ? ALL_QUIZ : ALL_QUIZ.filter(q=>q.test_type===type));
+}
+
+const QICON={multiple_choice:'📝',fill_blank:'✏️',drag_drop:'🎯',wheel_spin:'🎡',true_false:'✅'};
+const TBADGE={pretest:['ก่อนเรียน','bg-blue'],posttest:['หลังเรียน','bg-green'],practice:['ฝึกหัด','bg-amber']};
+
+function renderQuizCards(list) {
+  const g=document.getElementById('quiz-grid'); if(!g) return;
+  if(!list.length){g.innerHTML=`<div class="text-center py-12 text-white/40 text-sm">ไม่พบแบบทดสอบ</div>`;return;}
+  g.innerHTML=`<div class="grid grid-cols-2 gap-3">`+list.map(q=>{
+    const [bl,bc]=TBADGE[q.test_type]||['ทั่วไป','bg-purple'];
+    return `<div class="quiz-card glass rounded-2xl p-4 border border-white/10 hover:border-purple-500/40 cursor-pointer group" onclick="openQuiz('${q.id}')">
+      <div class="flex items-start justify-between mb-3"><span class="text-2xl">${QICON[q.quiz_type]||'📝'}</span><span class="badge ${bc} text-xs">${bl}</span></div>
+      ${q.thumbnail_url?`<img src="${q.thumbnail_url}" class="w-full h-24 object-cover rounded-xl mb-2" alt=""/>` : ''}
+      <h4 class="font-bold text-sm lc2 mb-2 group-hover:text-purple-300 transition-colors">${esc(q.title)}</h4>
+      <p class="text-xs text-white/40">${q.time_limit_seconds>0?`⏱ ${q.time_limit_seconds/60} นาที`:'⏱ ไม่จำกัด'}</p>
+    </div>`;
+  }).join('')+'</div>';
+}
+
+// ══════════════════════════════════════════════════════════════
+// OPEN QUIZ — รายละเอียด + Leaderboard Realtime
+// ══════════════════════════════════════════════════════════════
+let VIDEO_WATCHED = false;
+
+async function openQuiz(id) {
+  showLoader('กำลังโหลดแบบทดสอบ...');
+  unsubLB();
+  try {
+    const { data: q } = await sb.from('quiz_sets')
+      .select('*,quiz_questions(*,quiz_choices(*),quiz_drag_pairs(*))')
+      .eq('id',id).single();
+    QUIZ_SET = q;
+    VIDEO_WATCHED = !q.video_required;
+
+    const lb = await getLB(id);
+
+    setApp(`
+    <nav class="sticky top-0 z-40 glass border-b border-white/10 px-4 py-3">
+      <div class="flex items-center gap-3 max-w-lg mx-auto">
+        <button onclick="renderHome()" class="p-2 rounded-xl hover:bg-white/10 transition"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>
+        <h1 class="font-bold text-sm flex-1 truncate font-kanit">${esc(q.title)}</h1>
+      </div>
+    </nav>
+    <div class="max-w-lg mx-auto px-4 py-6">
+      ${q.thumbnail_url?`<img src="${q.thumbnail_url}" class="w-full h-44 object-cover rounded-2xl mb-4" alt=""/>`:''}
+      ${q.video_url?`<div class="mb-4"><p class="text-xs text-amber-400 mb-2 font-medium">⚠️ กรุณาดูวิดีโอให้จบก่อนทำแบบทดสอบ</p>
+        <div class="rounded-2xl overflow-hidden bg-black aspect-video"><video id="qvideo" controls class="w-full h-full"><source src="${q.video_url}"/>เบราว์เซอร์ไม่รองรับวิดีโอ</video></div></div>`:''}
+      <div class="glass rounded-2xl p-5 border border-white/10 mb-5">
+        ${q.description?`<p class="text-white/70 text-sm mb-4">${esc(q.description)}</p>`:''}
+        <div class="grid grid-cols-2 gap-3 text-sm mb-5">
+          ${[['จำนวนข้อ',`${q.quiz_questions?.length||0} ข้อ`],['เวลา',q.time_limit_seconds>0?`${q.time_limit_seconds/60} นาที`:'ไม่จำกัด'],['คะแนนผ่าน',`${q.pass_score}%`],['ประเภท',TBADGE[q.test_type]?.[0]||'-']].map(([l,v])=>`<div class="bg-white/5 rounded-xl p-3"><div class="text-white/40 text-xs mb-1">${l}</div><div class="font-bold">${v}</div></div>`).join('')}
+        </div>
+        <button id="start-btn" onclick="startQuiz()" class="w-full py-4 rounded-2xl btn-grad font-bold text-lg shadow-lg" ${q.video_required&&!VIDEO_WATCHED?'disabled':''}>
+          🚀 เริ่มทำแบบทดสอบ
+        </button>
+      </div>
+      <!-- Leaderboard -->
+      <div class="glass rounded-2xl border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-white/10">
+          <h3 class="font-bold text-sm font-kanit">🏆 อันดับ Realtime</h3>
+          <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div><span class="text-xs text-white/40">Live</span></div>
+        </div>
+        <div id="lb-box" class="p-3 space-y-2 max-h-72 overflow-y-auto">${renderLBHtml(lb)}</div>
+      </div>
+    </div>`);
+
+    subLB(id);
+
+    if (q.video_required) {
+      document.getElementById('qvideo')?.addEventListener('ended', ()=>{
+        VIDEO_WATCHED=true;
+        document.getElementById('start-btn')?.removeAttribute('disabled');
+        toast('ดูวิดีโอจบแล้ว! พร้อมทำแบบทดสอบ 🎉','success');
+      });
+    }
+  } catch(e){ toast('โหลดไม่สำเร็จ','error'); renderHome(); }
+}
+
+// ══════════════════════════════════════════════════════════════
+// LEADERBOARD helpers
+// ══════════════════════════════════════════════════════════════
+async function getLB(quizSetId, lim=20) {
+  const { data } = await sb.from('quiz_leaderboard')
+    .select('*').eq('quiz_set_id',quizSetId)
+    .order('score',{ascending:false}).order('time_spent_seconds',{ascending:true}).limit(lim);
+  return data || [];
+}
+
+const MEDALS=['🥇','🥈','🥉'];
+function renderLBHtml(entries) {
+  if(!entries.length) return `<div class="text-center py-8 text-white/40 text-sm">ยังไม่มีข้อมูลคะแนน</div>`;
+  return entries.map((e,i)=>{
+    const isMe = e.user_id===USER?.userId;
+    const av = e.picture_url||`https://ui-avatars.com/api/?name=${encodeURIComponent(e.display_name)}&background=6366f1&color=fff`;
+    return `<div class="flex items-center gap-3 p-3 rounded-xl border ${isMe?'border-purple-500 bg-purple-500/10':'border-white/10 bg-white/5'}">
+      <div class="w-7 text-center">${i<3?MEDALS[i]:`<span class="text-xs text-white/40">#${i+1}</span>`}</div>
+      <img src="${av}" class="w-9 h-9 rounded-full object-cover border-2 ${isMe?'border-purple-400':'border-white/20'}" onerror="this.src='https://ui-avatars.com/api/?name=U&background=6366f1&color=fff'" alt=""/>
+      <div class="flex-1 min-w-0"><p class="font-semibold text-sm truncate ${isMe?'text-purple-200':''}">${esc(e.display_name)}${isMe?' <span class="text-xs text-purple-400">(คุณ)</span>':''}</p><p class="text-xs text-white/40">${fmtT(e.time_spent_seconds)}</p></div>
+      <div class="text-right"><div class="font-bold ${i===0?'text-yellow-400':i===1?'text-slate-300':i===2?'text-amber-600':'text-white'}">${e.score}</div><div class="text-xs text-white/40">${Number(e.percentage).toFixed(0)}%</div></div>
+    </div>`;
+  }).join('');
+}
+
+function subLB(quizSetId) {
+  LB_CHAN = sb.channel(`lb:${quizSetId}`)
+    .on('postgres_changes',{event:'*',schema:'public',table:'quiz_leaderboard',filter:`quiz_set_id=eq.${quizSetId}`},
+      async ()=>{ const d=await getLB(quizSetId); const b=document.getElementById('lb-box'); if(b) b.innerHTML=renderLBHtml(d); })
+    .subscribe();
+}
+function unsubLB(){ if(LB_CHAN){ sb.removeChannel(LB_CHAN); LB_CHAN=null; } }
+
+// ══════════════════════════════════════════════════════════════
+// START QUIZ
+// ══════════════════════════════════════════════════════════════
+async function startQuiz() {
+  showLoader('กำลังเตรียมแบบทดสอบ...');
+  unsubLB();
+  try {
+    const { count } = await sb.from('quiz_sessions')
+      .select('*',{count:'exact',head:true}).eq('quiz_set_id',QUIZ_SET.id).eq('user_id',USER.userId);
+
+    const { data: sess } = await sb.from('quiz_sessions').insert({
+      user_id: USER.userId, quiz_set_id: QUIZ_SET.id, attempt_number:(count||0)+1, status:'in_progress'
+    }).select().single();
+    SESSION = sess;
+
+    // สุ่มคำถาม
+    let qs = [...(QUIZ_SET.quiz_questions||[])];
+    if(QUIZ_SET.shuffle_questions) qs=shuffle(qs);
+    if(QUIZ_SET.shuffle_choices) qs=qs.map(q=>({...q,quiz_choices:q.quiz_choices?shuffle(q.quiz_choices):q.quiz_choices}));
+    QUESTIONS = qs; Q_IDX = 0; ANSWERS = {}; T_START = Date.now();
+
+    if(QUIZ_SET.time_limit_seconds>0) startTimer(QUIZ_SET.time_limit_seconds);
+    renderQ();
+  } catch(e){ toast('เริ่มแบบทดสอบไม่สำเร็จ','error'); console.error(e); }
+}
+
+// ══════════════════════════════════════════════════════════════
+// RENDER QUESTION
+// ══════════════════════════════════════════════════════════════
+function renderQ() {
+  if(Q_IDX>=QUESTIONS.length){ finishQuiz(); return; }
+  const q=QUESTIONS[Q_IDX];
+  const pct=((Q_IDX+1)/QUESTIONS.length)*100;
+  const isLast = Q_IDX===QUESTIONS.length-1;
+
+  let body='';
+  if(q.question_type==='multiple_choice'||q.question_type==='true_false'){
+    body=`<div class="space-y-3">${(q.quiz_choices||[]).map((c,i)=>`
+      <button onclick="selChoice('${c.id}',this)" data-cid="${c.id}"
+        class="choice-btn w-full text-left p-4 rounded-2xl border border-white/15 bg-white/5 hover:bg-purple-600/20 hover:border-purple-500/50 transition-all font-medium text-sm flex items-start gap-3">
+        <span class="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0 text-xs font-bold">${String.fromCharCode(65+i)}</span>
+        <span class="flex-1 pt-0.5">${c.choice_image_url?`<img src="${c.choice_image_url}" class="w-full max-h-28 object-contain rounded-xl mb-2 bg-white/5" onerror="this.style.display='none'" alt=""/>`:''}${esc(c.choice_text)}</span>
+      </button>`).join('')}</div>`;
+  } else if(q.question_type==='fill_blank'){
+    body=`<div class="space-y-4">
+      <input type="text" id="fill-inp" placeholder="พิมพ์คำตอบที่นี่..."
+        class="form-inp text-base py-4 px-5" onkeydown="if(event.key==='Enter')submitFill()"/>
+      <button onclick="submitFill()" class="w-full py-4 rounded-2xl btn-grad font-bold text-sm shadow-lg">✓ ยืนยันคำตอบ</button>
+    </div>`;
+  } else if(q.question_type==='drag_drop'){
+    body = renderDragBody(q.quiz_drag_pairs||[]);
+  }
+
+  setApp(`
+  <div class="sticky top-0 z-40 glass border-b border-white/10 px-4 py-3">
+    <div class="max-w-lg mx-auto">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs text-white/50">ข้อ ${Q_IDX+1} / ${QUESTIONS.length}</span>
+        <span id="timer-el" class="text-xs font-bold text-white/70"></span>
+      </div>
+      <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+        <div class="h-full rounded-full bg-gradient-to-r from-purple-600 to-cyan-500 transition-all duration-500" style="width:${pct}%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="max-w-lg mx-auto px-4 py-6">
+    <div class="glass rounded-3xl border border-white/10 p-5 mb-5 anim-fade">
+      ${q.question_image_url?`<img src="${q.question_image_url}" class="w-full max-h-44 object-contain rounded-2xl mb-4 bg-white/5" onerror="this.style.display='none'" alt=""/>`:''}
+      <p class="font-semibold text-base leading-relaxed text-white">${esc(q.question_text)}</p>
+      ${q.difficulty?`<span class="text-xs text-white/30 mt-1 block">${{easy:'🟢 ง่าย',medium:'🟡 ปานกลาง',hard:'🔴 ยาก'}[q.difficulty]||''}</span>`:''}
+    </div>
+    ${body}
+    <div class="flex gap-3 mt-6">
+      ${Q_IDX>0?`<button onclick="Q_IDX--;renderQ()" class="flex-1 py-3 rounded-2xl border border-white/20 text-white/70 hover:bg-white/10 transition font-medium text-sm">← ย้อนกลับ</button>`:'<div class="flex-1"></div>'}
+      ${q.question_type!=='fill_blank'&&q.question_type!=='drag_drop'?`<button onclick="nextQ()" class="flex-1 py-3 rounded-2xl btn-grad font-bold text-sm shadow-lg">${isLast?'✓ ส่งคำตอบ':'ถัดไป →'}</button>`:''}
+    </div>
+  </div>`);
+}
+
+function selChoice(cid, btn) {
+  document.querySelectorAll('.choice-btn').forEach(b=>{ b.classList.remove('sel'); b.classList.add('border-white/15','bg-white/5'); });
+  btn.classList.add('sel'); btn.classList.remove('border-white/15','bg-white/5');
+  ANSWERS[QUESTIONS[Q_IDX].id]={choiceId:cid};
+}
+function submitFill() {
+  const v=document.getElementById('fill-inp')?.value.trim();
+  if(!v){toast('กรุณาพิมพ์คำตอบก่อน','warning');return;}
+  ANSWERS[QUESTIONS[Q_IDX].id]={text:v};
+  Q_IDX++; renderQ();
+}
+function nextQ() { Q_IDX++; renderQ(); }
+
+function startTimer(total) {
+  let rem=total;
+  TIMER_IV=setInterval(()=>{
+    rem--;
+    const e=document.getElementById('timer-el');
+    if(e){ e.textContent=`⏱ ${fmtT(rem)}`; if(rem<=60) e.classList.add('text-red-400'); }
+    if(rem<=0){ clearInterval(TIMER_IV); finishQuiz(); }
+  },1000);
+}
+
+// ══════════════════════════════════════════════════════════════
+// DRAG & DROP (inline)
+// ══════════════════════════════════════════════════════════════
+let DD_PAIRS=[], DD_MATCH={}, DD_DRAGGING=null, DD_TPID=null, DD_CLONE=null;
+
+function renderDragBody(pairs) {
+  DD_PAIRS=pairs; DD_MATCH={};
+  const left=pairs.map(p=>({id:p.id,text:p.left_item,img:p.left_image_url}));
+  const right=shuffle(pairs.map(p=>({id:p.id,text:p.right_item,img:p.right_image_url})));
+  return `<p class="text-xs text-white/50 text-center mb-4">ลากคำทางขวาวางให้ตรงกับทางซ้าย</p>
+  <div class="grid grid-cols-2 gap-3">
+    <div class="space-y-3">${left.map(p=>`
+      <div class="glass border border-white/15 rounded-2xl p-3 flex items-center gap-2 min-h-[56px]">
+        ${p.img?`<img src="${p.img}" class="w-8 h-8 object-contain rounded" alt=""/>`:''}
+        <span class="font-semibold text-sm">${esc(p.text)}</span>
+        <div class="drop-zone flex-1 flex items-center justify-center text-xs text-white/30 p-1"
+          data-pid="${p.id}" id="dz-${p.id}" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="ddDrop(event,'${p.id}')">วางที่นี่</div>
+      </div>`).join('')}</div>
+    <div class="space-y-3" id="dd-right">${right.map(p=>`
+      <div class="drag-item glass border border-purple-500/30 rounded-2xl p-3 min-h-[56px] flex items-center justify-center text-sm font-semibold text-center bg-purple-900/20 select-none"
+        id="dg-${p.id}" data-pid="${p.id}" draggable="true"
+        ondragstart="DD_DRAGGING='${p.id}';setTimeout(()=>this.classList.add('opacity-40'),0)"
+        ondragend="this.classList.remove('opacity-40');DD_DRAGGING=null"
+        ontouchstart="ddTouchStart(event,'${p.id}')" ontouchmove="ddTouchMove(event)" ontouchend="ddTouchEnd(event)">
+        ${p.img?`<img src="${p.img}" class="w-8 h-8 object-contain rounded mr-2" alt=""/>`:''}${esc(p.text)}</div>`).join('')}
+    </div>
+  </div>
+  <button onclick="submitDD()" class="w-full mt-5 py-4 rounded-2xl btn-grad font-bold text-sm shadow-lg">✓ ตรวจคำตอบ</button>`;
+}
+
+function ddDrop(e,zonePid){
+  e.preventDefault();
+  const pid=DD_DRAGGING||DD_TPID; if(!pid) return;
+  document.querySelectorAll('.drop-zone').forEach(z=>z.classList.remove('over'));
+  DD_MATCH[zonePid]=pid;
+  const pair=DD_PAIRS.find(p=>p.id===pid);
+  const dz=document.getElementById(`dz-${zonePid}`);
+  if(dz){dz.innerHTML=`<span class="text-purple-300 font-semibold text-xs">${esc(pair?.right_item||'')}</span>`;dz.classList.add('border-purple-500/50','bg-purple-900/20');}
+  const dg=document.getElementById(`dg-${pid}`); if(dg) dg.style.visibility='hidden';
+  DD_TPID=null;
+}
+
+function ddTouchStart(e,pid){DD_TPID=pid;const el=e.currentTarget,r=el.getBoundingClientRect();DD_CLONE=el.cloneNode(true);DD_CLONE.style.cssText=`position:fixed;top:${r.top}px;left:${r.left}px;width:${r.width}px;z-index:1000;opacity:.85;pointer-events:none;`;document.body.appendChild(DD_CLONE);el.style.opacity='.3';}
+function ddTouchMove(e){if(!DD_CLONE)return;e.preventDefault();const t=e.touches[0];DD_CLONE.style.top=`${t.clientY-28}px`;DD_CLONE.style.left=`${t.clientX-56}px`;document.querySelectorAll('.drop-zone').forEach(z=>z.classList.remove('over'));document.elementFromPoint(t.clientX,t.clientY)?.closest('.drop-zone')?.classList.add('over');}
+function ddTouchEnd(e){if(!DD_CLONE)return;const t=e.changedTouches[0];DD_CLONE.remove();DD_CLONE=null;document.getElementById(`dg-${DD_TPID}`)?.style.removeProperty('opacity');document.querySelectorAll('.drop-zone').forEach(z=>z.classList.remove('over'));const zone=document.elementFromPoint(t.clientX,t.clientY)?.closest('.drop-zone');if(zone) ddDrop(new Event('drop'),zone.dataset.pid);}
+
+function submitDD(){
+  if(Object.keys(DD_MATCH).length<DD_PAIRS.length){toast(`ยังจับคู่ไม่ครบ (${Object.keys(DD_MATCH).length}/${DD_PAIRS.length})`,'warning');return;}
+  let correct=0;
+  DD_PAIRS.forEach(p=>{
+    const dz=document.getElementById(`dz-${p.id}`);
+    const ok=DD_MATCH[p.id]===p.id;
+    if(ok){correct++;dz.classList.add('matched');dz.innerHTML=`<span class="text-green-400 text-xs font-semibold">✓ ${esc(p.right_item)}</span>`;}
+    else{if(dz){dz.style.borderColor='#ef4444';dz.style.background='rgba(239,68,68,.1)';dz.innerHTML=`<span class="text-red-400 text-xs font-semibold">✗</span>`;}}
+  });
+  ANSWERS[QUESTIONS[Q_IDX].id]={drag:DD_MATCH};
+  const pct=Math.round(correct/DD_PAIRS.length*100);
+  if(pct===100)confetti();
+  toast(`จับคู่ถูก ${correct}/${DD_PAIRS.length} คู่`,pct>=80?'success':'warning');
+  document.querySelector('[onclick="submitDD()"]')?.remove();
+  setTimeout(()=>{Q_IDX++;renderQ();},1500);
+}
+
+// ══════════════════════════════════════════════════════════════
+// FINISH QUIZ
+// ══════════════════════════════════════════════════════════════
+async function finishQuiz() {
+  clearInterval(TIMER_IV);
+  showLoader('กำลังตรวจคำตอบ...');
+  const timeSpent=Math.floor((Date.now()-T_START)/1000);
+
+  // คำนวณคะแนน
+  let total=0, max=0, correct=0;
+  QUESTIONS.forEach(q=>{
+    max+=q.points;
+    const ans=ANSWERS[q.id];
+    let ok=false;
+    if(q.question_type==='multiple_choice'||q.question_type==='true_false'){
+      const cc=q.quiz_choices?.find(c=>c.is_correct);
+      ok=ans?.choiceId===cc?.id;
+    } else if(q.question_type==='fill_blank'){
+      ok=(ans?.text||'').trim().toLowerCase()===(q.correct_answer||'').trim().toLowerCase();
+    } else if(q.question_type==='drag_drop'){
+      const ddM=ans?.drag||{};
+      const ddC=(q.quiz_drag_pairs||[]).filter(p=>ddM[p.id]===p.id).length;
+      ok=ddC===(q.quiz_drag_pairs||[]).length;
+      correct+=ddC; total+=ddC; max-=q.points;
+      max+=(q.quiz_drag_pairs||[]).length; return;
+    }
+    if(ok){total+=q.points;correct++;}
+  });
+  const pct=max>0?parseFloat(((total/max)*100).toFixed(2)):0;
+
+  try {
+    // บันทึก answers
+    for(const q of QUESTIONS){
+      const ans=ANSWERS[q.id];
+      if(!ans||ans.drag) continue;
+      await sb.from('quiz_answers').insert({
+        session_id:SESSION.id, question_id:q.id,
+        user_answer:ans.text||ans.choiceId,
+        selected_choice_id:ans.choiceId||null,
+        is_correct:(() => { const cc=q.quiz_choices?.find(c=>c.is_correct); if(cc) return ans.choiceId===cc.id; return (ans.text||'').trim().toLowerCase()===(q.correct_answer||'').trim().toLowerCase(); })(),
+        points_earned:(() => { const cc=q.quiz_choices?.find(c=>c.is_correct); const ok=cc?ans.choiceId===cc.id:(ans.text||'').trim().toLowerCase()===(q.correct_answer||'').trim().toLowerCase(); return ok?q.points:0; })(),
+      });
+    }
+    // complete session + leaderboard
+    await api('complete-session',{
+      method:'POST',
+      body:JSON.stringify({sessionId:SESSION.id,totalScore:total,maxScore:max,timeSpentSeconds:timeSpent,userId:USER.userId,displayName:USER.displayName,pictureUrl:USER.pictureUrl}),
+    });
+  } catch(e){ console.error(e); }
+
+  const isPassed=pct>=(QUIZ_SET.pass_score??60);
+  if(isPassed) confetti();
+
+  const m=Math.floor(timeSpent/60), s=timeSpent%60;
+  setApp(`
+  <div class="min-h-screen flex items-center justify-center px-4 py-8">
+    <div class="max-w-sm w-full">
+      <div class="text-center mb-6 anim-bounce"><div class="text-7xl mb-3">${isPassed?'🎉':'📚'}</div>
+        <h2 class="text-2xl font-bold font-kanit ${isPassed?'text-green-400':'text-amber-400'}">${isPassed?'สอบผ่าน!':'ยังไม่ผ่าน'}</h2></div>
+      <div class="glass rounded-3xl border border-white/10 p-6 mb-5 text-center">
+        <div class="relative w-36 h-36 mx-auto mb-4">
+          <svg class="w-36 h-36 transform -rotate-90">
+            <circle cx="72" cy="72" r="60" stroke="white" stroke-opacity=".1" stroke-width="10" fill="none"/>
+            <circle cx="72" cy="72" r="60" stroke="${isPassed?'#22c55e':'#f59e0b'}" stroke-width="10" fill="none"
+              stroke-dasharray="${2*Math.PI*60}" stroke-dashoffset="${2*Math.PI*60*(1-pct/100)}" stroke-linecap="round"/>
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <span class="text-3xl font-bold font-kanit">${pct.toFixed(0)}%</span>
+            <span class="text-xs text-white/50">คะแนน</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-3 text-sm">
+          <div class="bg-white/5 rounded-xl p-3"><div class="text-white/40 text-xs">ถูก</div><div class="font-bold text-green-400">${correct}</div></div>
+          <div class="bg-white/5 rounded-xl p-3"><div class="text-white/40 text-xs">คะแนน</div><div class="font-bold">${total}/${max}</div></div>
+          <div class="bg-white/5 rounded-xl p-3"><div class="text-white/40 text-xs">เวลา</div><div class="font-bold">${m}:${s.toString().padStart(2,'0')}</div></div>
+        </div>
+      </div>
+      <div class="space-y-3">
+        <button onclick="openQuiz('${QUIZ_SET.id}')" class="w-full py-4 rounded-2xl border border-white/20 text-white/80 hover:bg-white/10 transition font-semibold text-sm">🔄 ทำอีกครั้ง</button>
+        <button onclick="renderHome()" class="w-full py-4 rounded-2xl btn-grad font-bold shadow-lg">🏠 กลับหน้าหลัก</button>
+        <button onclick="renderMyScores()" class="w-full py-4 rounded-2xl border border-purple-500/40 text-purple-300 hover:bg-purple-600/20 transition font-semibold text-sm">📊 ดูสถิติของฉัน</button>
+      </div>
+    </div>
+  </div>`);
+}
+
+// ══════════════════════════════════════════════════════════════
+// MY SCORES
+// ══════════════════════════════════════════════════════════════
+async function renderMyScores() {
+  showLoader('กำลังโหลดสถิติ...');
+  const { data } = await sb.from('quiz_sessions')
+    .select('*,quiz_sets(title,test_type)').eq('user_id',USER.userId)
+    .eq('status','completed').order('completed_at',{ascending:false});
+
+  const av=USER.pictureUrl||`https://ui-avatars.com/api/?name=${encodeURIComponent(USER.displayName)}&background=6366f1&color=fff`;
+  setApp(`
+  <nav class="sticky top-0 z-40 glass border-b border-white/10 px-4 py-3">
+    <div class="flex items-center gap-3 max-w-lg mx-auto">
+      <button onclick="renderHome()" class="p-2 rounded-xl hover:bg-white/10 transition"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>
+      <h1 class="font-bold font-kanit">📊 สถิติของฉัน</h1>
+    </div>
+  </nav>
+  <div class="max-w-lg mx-auto px-4 py-6">
+    <div class="flex items-center gap-4 glass rounded-2xl p-4 border border-white/10 mb-5">
+      <img src="${av}" class="w-16 h-16 rounded-2xl object-cover border-2 border-purple-500/50" onerror="this.src='https://ui-avatars.com/api/?name=U&background=6366f1&color=fff'" alt=""/>
+      <div><h3 class="font-bold text-lg">${esc(USER.displayName)}</h3><p class="text-white/50 text-sm">ทำแบบทดสอบทั้งหมด ${data?.length||0} ครั้ง</p></div>
+    </div>
+    <div class="space-y-3">
+      ${!data?.length?`<div class="text-center py-12 text-white/40"><div class="text-4xl mb-3">📝</div><p>ยังไม่เคยทำแบบทดสอบ</p></div>`:
+      data.map(s=>`
+        <div class="glass rounded-2xl border border-white/10 p-4">
+          <div class="flex items-start justify-between mb-2">
+            <div class="flex-1 mr-3"><h4 class="font-semibold text-sm lc2">${esc(s.quiz_sets?.title||'-')}</h4><p class="text-xs text-white/40">${new Date(s.completed_at).toLocaleDateString('th-TH',{dateStyle:'medium'})}</p></div>
+            <div class="text-right"><div class="font-bold text-lg ${s.is_passed?'text-green-400':'text-red-400'}">${Number(s.percentage).toFixed(0)}%</div><div class="text-xs text-white/40">${s.total_score}/${s.max_score}</div></div>
+          </div>
+          <div class="flex gap-2">
+            <span class="badge ${s.is_passed?'bg-green':'bg-red'}">${s.is_passed?'✓ ผ่าน':'✗ ไม่ผ่าน'}</span>
+            <span class="badge" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.5)">ครั้งที่ ${s.attempt_number}</span>
+            <span class="badge" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.5)">${TBADGE[s.quiz_sets?.test_type]?.[0]||'-'}</span>
+          </div>
+        </div>`).join('')}
+    </div>
+  </div>`);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ADMIN PANEL
+// ══════════════════════════════════════════════════════════════
+function renderAdmin() {
+  if(!IS_ADMIN){toast('ไม่มีสิทธิ์ Admin','error');return;}
+  setApp(`
+  <div class="flex min-h-screen">
+    <!-- Sidebar -->
+    <aside class="w-56 bg-black/60 backdrop-blur-xl border-r border-white/8 flex flex-col py-6 px-3 flex-shrink-0 hidden md:flex">
+      <div class="px-3 mb-8">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center mb-3">📚</div>
+        <h2 class="font-bold font-kanit text-sm">คลังข้อสอบ</h2>
+        <p class="text-xs text-white/40">Admin Panel</p>
+      </div>
+      <nav class="space-y-1 flex-1">
+        ${[['dashboard','🏠','Dashboard'],['quiz-sets','📝','ชุดแบบทดสอบ'],['students','👥','นักเรียน'],['reports','📊','รายงาน'],['import','📤','Import CSV']].map(([v,ic,lb])=>
+          `<button onclick="adm('${v}')" id="an-${v}" class="adm-nav ${v==='dashboard'?'active':''} w-full text-left">${ic} ${lb}</button>`).join('')}
+      </nav>
+      <div class="px-3 pt-4 border-t border-white/10">
+        <div class="flex items-center gap-3 mb-3">
+          <img src="${USER.pictureUrl||`https://ui-avatars.com/api/?name=${encodeURIComponent(USER.displayName)}&background=6366f1&color=fff`}" class="w-8 h-8 rounded-full object-cover" alt=""/>
+          <p class="text-xs font-semibold truncate">${esc(USER.displayName)}</p>
+        </div>
+        <button onclick="renderHome()" class="text-xs text-white/40 hover:text-white transition">← กลับหน้าบ้าน</button>
+      </div>
+    </aside>
+    <!-- Main -->
+    <div class="flex-1 flex flex-col min-h-screen">
+      <header class="sticky top-0 z-30 glass border-b border-white/10 px-6 py-4 flex items-center justify-between">
+        <h1 class="font-bold text-lg font-kanit" id="adm-title">Dashboard</h1>
+        <div class="flex gap-2 md:hidden">
+          ${[['dashboard','🏠'],['quiz-sets','📝'],['students','👥'],['reports','📊'],['import','📤']].map(([v,ic])=>
+            `<button onclick="adm('${v}')" class="p-2 rounded-xl hover:bg-white/10 transition text-sm">${ic}</button>`).join('')}
+        </div>
+      </header>
+      <div id="adm-content" class="flex-1 p-6"></div>
+    </div>
+  </div>`);
+  adm('dashboard');
+}
+
+function adm(v) {
+  VIEW=v;
+  document.querySelectorAll('.adm-nav').forEach(b=>b.classList.remove('active'));
+  document.getElementById(`an-${v}`)?.classList.add('active');
+  const titles={dashboard:'Dashboard','quiz-sets':'ชุดแบบทดสอบ',students:'นักเรียน',reports:'รายงานผล',import:'Import CSV'};
+  const t=document.getElementById('adm-title'); if(t) t.textContent=titles[v]||v;
+  ({dashboard:admDash,'quiz-sets':admQuizSets,students:admStudents,reports:admReports,import:admImport}[v]||admDash)();
+}
+
+async function admDash() {
+  document.getElementById('adm-content').innerHTML=`<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">${skeletons(4)}</div><div class="grid md:grid-cols-2 gap-4">${skeletons(2)}</div>`;
+  const [
+    {count:nStudents},{count:nSess},{count:nPass},
+    {data:recent},
+  ] = await Promise.all([
+    sb.from('quiz_users').select('*',{count:'exact',head:true}).eq('role','student'),
+    sb.from('quiz_sessions').select('*',{count:'exact',head:true}).eq('status','completed'),
+    sb.from('quiz_sessions').select('*',{count:'exact',head:true}).eq('is_passed',true),
+    sb.from('quiz_sessions').select('*'*,quiz_users(displayName,pictureUrl),quiz_sets(title)').eq('status','completed').order('completed_at',{ascending:false}).limit(8),
+  ]);
+  const rate=nSess>0?Math.round((nPass/nSess)*100):0;
+  document.getElementById('adm-content').innerHTML=`
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    ${[['👥','นักเรียน',nStudents,'text-blue-400'],['📝','การสอบ',nSess,'text-purple-400'],['✅','ผ่าน',nPass,'text-green-400'],['📊','อัตราผ่าน',`${rate}%`,'text-amber-400']].map(([ic,lb,v,cl])=>`
+    <div class="stat-card"><div class="text-2xl mb-2">${ic}</div><div class="text-2xl font-bold font-kanit ${cl}">${v}</div><div class="text-xs text-white/40 mt-1">${lb}</div></div>`).join('')}
+  </div>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="stat-card">
+      <h3 class="font-bold text-sm mb-4 text-white/80">📋 การสอบล่าสุด</h3>
+      <div class="space-y-3">
+        ${(recent||[]).map(s=>`<div class="flex items-center gap-3">
+          <img src="${s.quiz_users?.pictureUrl||`https://ui-avatars.com/api/?name=U&background=6366f1&color=fff`}" class="w-8 h-8 rounded-full object-cover" onerror="this.src='https://ui-avatars.com/api/?name=U&background=6366f1&color=fff'" alt=""/>
+          <div class="flex-1 min-w-0"><p class="text-xs font-semibold truncate">${esc(s.quiz_users?.displayName||'-')}</p><p class="text-xs text-white/40 truncate">${esc(s.quiz_sets?.title||'-')}</p></div>
+          <span class="badge ${s.is_passed?'bg-green':'bg-red'}">${s.is_passed?'ผ่าน':'ไม่ผ่าน'}</span></div>`).join('')}
+      </div>
+    </div>
+    <div class="stat-card">
+      <h3 class="font-bold text-sm mb-4 text-white/80">⚡ ทำรายการ</h3>
+      <div class="space-y-3">
+        ${[['adm(\'quiz-sets\')','📝','เพิ่มชุดแบบทดสอบ','สร้างข้อสอบใหม่'],["adm('import')",'📤','Import CSV','นำเข้าข้อสอบจากไฟล์'],['exportAll()','📊','Export รายงาน','ดาวน์โหลด CSV ทั้งหมด']].map(([fn,ic,t,s])=>`
+        <button onclick="${fn}" class="w-full text-left flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-purple-600/20 border border-transparent hover:border-purple-500/50 transition-all text-sm">
+          <span class="text-xl">${ic}</span><div><div class="font-semibold">${t}</div><div class="text-xs text-white/40">${s}</div></div></button>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+async function admQuizSets() {
+  const c=document.getElementById('adm-content');
+  c.innerHTML=`<div class="flex justify-end mb-4"><button onclick="showCreateQuiz()" class="btn-grad px-5 py-2.5 rounded-xl font-semibold text-sm shadow-lg">+ เพิ่มชุดแบบทดสอบ</button></div><div class="stat-card overflow-hidden p-0">${skeletons(3)}</div>`;
+  const {data}=await sb.from('quiz_sets').select('*'*,quiz_units(title)').order('created_at',{ascending:false});
+  document.querySelector('#adm-content .stat-card').innerHTML=`<div class="overflow-x-auto"><table class="tbl">
+    <thead><tr><th>ชื่อชุดข้อสอบ</th><th>ประเภท</th><th>รูปแบบ</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+    <tbody>${(data||[]).map(q=>`<tr>
+      <td><div class="font-semibold text-sm">${esc(q.title)}</div><div class="text-xs text-white/40">${esc(q.description||'')}</div></td>
+      <td><span class="badge ${q.test_type==='pretest'?'bg-blue':q.test_type==='posttest'?'bg-green':'bg-amber'}">${TBADGE[q.test_type]?.[0]||'-'}</span></td>
+      <td class="text-xs text-white/50">${q.quiz_type}</td>
+      <td><span class="badge ${q.is_published?'bg-green':'bg-red'}">${q.is_published?'✓ เผยแพร่':'○ Draft'}</span></td>
+      <td><div class="flex gap-2 flex-wrap">
+        <button onclick="togglePub('${q.id}',${q.is_published})" class="text-xs px-3 py-1.5 rounded-lg ${q.is_published?'bg-red-500/20 hover:bg-red-500/40':'bg-green-500/20 hover:bg-green-500/40'} transition">${q.is_published?'ซ่อน':'เผยแพร่'}</button>
+        <button onclick="exportReport('${q.id}')" class="text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/40 transition">Export</button>
+      </div></td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+async function admStudents() {
+  document.getElementById('adm-content').innerHTML=`<div class="stat-card overflow-hidden p-0">${skeletons(3)}</div>`;
+  const {data}=await sb.from('quiz_users').select('*').order('registered_at',{ascending:false});
+  document.querySelector('#adm-content .stat-card').innerHTML=`<div class="overflow-x-auto"><table class="tbl">
+    <thead><tr><th>ผู้ใช้</th><th>LINE userId</th><th>บทบาท</th><th>เพื่อน OA</th><th>เข้าใช้ล่าสุด</th><th>จัดการ</th></tr></thead>
+    <tbody>${(data||[]).map(u=>`<tr>
+      <td><div class="flex items-center gap-2">
+        <img src="${u.pictureUrl||`https://ui-avatars.com/api/?name=U&background=6366f1&color=fff`}" class="w-9 h-9 rounded-full object-cover" onerror="this.src='https://ui-avatars.com/api/?name=U&background=6366f1&color=fff'" alt=""/>
+        <span class="font-semibold text-sm">${esc(u.displayName)}</span></div></td>
+      <td class="font-mono text-xs text-white/40">${u.userId.slice(0,16)}…</td>
+      <td><span class="badge ${u.role==='admin'?'bg-purple':u.role==='teacher'?'bg-blue':'bg-amber'}">${u.role}</span></td>
+      <td>${u.is_friend?'<span class="text-green-400">✓</span>':'<span class="text-red-400">✗</span>'}</td>
+      <td class="text-xs text-white/40">${new Date(u.last_login_at).toLocaleDateString('th-TH',{dateStyle:'short'})}</td>
+      <td><select onchange="changeRole('${u.userId}',this.value)" class="text-xs bg-white/10 border border-white/20 rounded-lg px-2 py-1 text-white outline-none">
+        <option ${u.role==='student'?'selected':''} value="student">Student</option>
+        <option ${u.role==='teacher'?'selected':''} value="teacher">Teacher</option>
+        <option ${u.role==='admin'?'selected':''} value="admin">Admin</option>
+      </select></td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+async function admReports() {
+  const {data:qs}=await sb.from('quiz_sets').select('id,title').order('title');
+  document.getElementById('adm-content').innerHTML=`
+  <div class="flex flex-wrap gap-3 mb-5">
+    <select id="rf-quiz" onchange="loadReport()" class="form-inp w-52"><option value="">ทุกชุดข้อสอบ</option>${(qs||[]).map(q=>`<option value="${q.id}">${esc(q.title)}</option>`).join('')}</select>
+    <select id="rf-type" onchange="loadReport()" class="form-inp w-36"><option value="">ทุกประเภท</option><option value="pretest">ก่อนเรียน</option><option value="posttest">หลังเรียน</option><option value="practice">ฝึกหัด</option></select>
+    <button onclick="exportAll()" class="btn-grad px-4 py-2 rounded-xl text-sm font-semibold">📊 Export CSV</button>
+  </div>
+  <div class="stat-card overflow-hidden p-0" id="rpt-box">${skeletons(3)}</div>`;
+  loadReport();
+}
+
+async function loadReport() {
+  const qid=document.getElementById('rf-quiz')?.value;
+  const typ=document.getElementById('rf-type')?.value;
+  let q=sb.from('quiz_sessions').select('*,quiz_users(displayName,pictureUrl),quiz_sets(title,test_type)').eq('status','completed').order('completed_at',{ascending:false}).limit(200);
+  if(qid) q=q.eq('quiz_set_id',qid);
+  const {data}=await q;
+  const rows=(typ?data?.filter(s=>s.quiz_sets?.test_type===typ):data)||[];
+  const b=document.getElementById('rpt-box'); if(!b) return;
+  b.innerHTML=`<div class="overflow-x-auto"><table class="tbl">
+    <thead><tr><th>นักเรียน</th><th>แบบทดสอบ</th><th>ประเภท</th><th>คะแนน</th><th>ร้อยละ</th><th>ผล</th><th>เวลา</th><th>วันที่</th></tr></thead>
+    <tbody>${rows.map(s=>`<tr>
+      <td><div class="flex items-center gap-2"><img src="${s.quiz_users?.pictureUrl||`https://ui-avatars.com/api/?name=U&background=6366f1&color=fff`}" class="w-7 h-7 rounded-full object-cover" onerror="this.src='https://ui-avatars.com/api/?name=U&background=6366f1&color=fff'" alt=""/>
+        <span class="text-sm">${esc(s.quiz_users?.displayName||'-')}</span></div></td>
+      <td class="text-sm text-white/70 max-w-[140px]"><div class="truncate">${esc(s.quiz_sets?.title||'-')}</div></td>
+      <td><span class="badge ${s.quiz_sets?.test_type==='pretest'?'bg-blue':s.quiz_sets?.test_type==='posttest'?'bg-green':'bg-amber'}">${s.quiz_sets?.test_type==='pretest'?'T1':s.quiz_sets?.test_type==='posttest'?'T2':'ฝึก'}</span></td>
+      <td class="font-bold">${s.total_score}/${s.max_score}</td>
+      <td class="font-bold ${Number(s.percentage)>=60?'text-green-400':'text-red-400'}">${Number(s.percentage).toFixed(0)}%</td>
+      <td><span class="badge ${s.is_passed?'bg-green':'bg-red'}">${s.is_passed?'ผ่าน':'ไม่ผ่าน'}</span></td>
+      <td class="text-xs text-white/50">${fmtT(s.time_spent_seconds)}</td>
+      <td class="text-xs text-white/40">${new Date(s.completed_at).toLocaleDateString('th-TH',{dateStyle:'short'})}</td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+async function admImport() {
+  const {data:qs}=await sb.from('quiz_sets').select('id,title').order('title');
+  document.getElementById('adm-content').innerHTML=`
+  <div class="max-w-xl">
+    <div class="stat-card mb-5">
+      <h3 class="font-bold mb-4">📤 Import ข้อสอบจาก CSV</h3>
+      <div class="space-y-4">
+        <div><label class="text-xs text-white/50 block mb-1">เลือกชุดแบบทดสอบ</label>
+          <select id="imp-qid" class="form-inp"><option value="">-- เลือก --</option>${(qs||[]).map(q=>`<option value="${q.id}">${esc(q.title)}</option>`).join('')}</select></div>
+        <div><label class="text-xs text-white/50 block mb-1">ไฟล์ CSV</label>
+          <input type="file" id="imp-file" accept=".csv" class="form-inp file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-purple-600/40 file:text-white file:text-xs cursor-pointer"/></div>
+        <div class="flex gap-3">
+          <button onclick="doImport()" class="btn-grad px-5 py-3 rounded-xl font-semibold text-sm">📤 Import</button>
+          <button onclick="dlTemplate()" class="px-5 py-3 rounded-xl border border-white/20 hover:bg-white/10 transition text-sm text-white/70">⬇ Template</button>
+        </div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <h3 class="font-bold text-sm mb-3">📋 รูปแบบ CSV (header row)</h3>
+      <div class="bg-black/30 rounded-xl p-3 font-mono text-xs text-green-400 overflow-x-auto mb-3">question_text,question_type,choice_a,choice_b,choice_c,choice_d,correct_answer,explanation,difficulty,points,image_url</div>
+      <p class="text-xs text-white/50 mb-2">correct_answer: ใส่ A/B/C/D สำหรับ multiple_choice หรือคำตอบตรงๆ สำหรับ fill_blank</p>
+    </div>
+    <div id="imp-result" class="mt-4"></div>
+  </div>`;
+}
+
+async function doImport() {
+  const qid=document.getElementById('imp-qid').value;
+  const file=document.getElementById('imp-file').files[0];
+  if(!qid){toast('กรุณาเลือกชุดแบบทดสอบ','warning');return;}
+  if(!file){toast('กรุณาเลือกไฟล์','warning');return;}
+  const r=document.getElementById('imp-result');
+  r.innerHTML=`<div class="stat-card animate-pulse text-white/60 text-sm">กำลัง import...</div>`;
+  const fd=new FormData(); fd.append('file',file); fd.append('quiz_set_id',qid);
+  try{
+    const res=await fetch(`${API_BASE}/import-questions`,{method:'POST',body:fd});
+    const d=await res.json();
+    r.innerHTML=d.ok
+      ?`<div class="stat-card border border-green-500/30 bg-green-500/5"><p class="text-green-400 font-bold mb-2">✅ Import สำเร็จ!</p><p class="text-sm text-white/70">นำเข้า ${d.imported}/${d.total} รายการ</p>${d.errors?.length?`<div class="mt-3 text-xs text-red-400">${d.errors.join('<br>')}</div>`:''}</div>`
+      :`<div class="stat-card border border-red-500/30"><p class="text-red-400">${d.error}</p></div>`;
+    if(d.ok) toast(`Import สำเร็จ ${d.imported} ข้อ`,'success');
+  }catch(e){r.innerHTML=`<div class="stat-card border border-red-500/30"><p class="text-red-400">${esc(e.message)}</p></div>`;}
+}
+
+function dlTemplate(){
+  const c='\uFEFF'+'question_text,question_type,choice_a,choice_b,choice_c,choice_d,correct_answer,explanation,difficulty,points,image_url\n"ตัวอย่างคำถาม",multiple_choice,"ก","ข","ค","ง",A,"คำอธิบาย",easy,1,\n';
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:'text/csv;charset=utf-8;'})); a.download='template.csv'; a.click();
+}
+
+async function togglePub(id,cur){
+  await sb.from('quiz_sets').update({is_published:!cur}).eq('id',id);
+  toast(`${!cur?'เผยแพร่':'ซ่อน'}แล้ว`,'success'); admQuizSets();
+}
+async function changeRole(uid,role){
+  await sb.from('quiz_users').update({role}).eq('userId',uid);
+  toast('อัปเดตสำเร็จ','success');
+}
+function showCreateQuiz(){ toast('ใช้ Import CSV เพื่อเพิ่มข้อสอบ หรือเพิ่มผ่าน Supabase Table Editor','info',5000); }
+function exportReport(qid){ window.open(`${API_BASE}/export-report?quiz_set_id=${qid}`,'_blank'); }
+function exportAll(){ window.open(`${API_BASE}/export-report`,'_blank'); }
+
+// ══════════════════════════════════════════════════════════════
+// WHEEL SPIN MODAL
+// ══════════════════════════════════════════════════════════════
+async function openWheel(quizSetId) {
+  const lb=await getLB(quizSetId,50);
+  const parts=lb.length?lb.map(e=>({name:e.display_name,pic:e.picture_url})):
+    [{name:'ตัวอย่าง A'},{name:'ตัวอย่าง B'},{name:'ตัวอย่าง C'},{name:'ตัวอย่าง D'}];
+
+  document.body.insertAdjacentHTML('beforeend',`
+  <div class="modal-bg" id="wheel-modal">
+    <div class="modal-sheet max-w-sm w-full">
+      <div class="modal-head"><h3 class="font-bold font-kanit">🎡 วงล้อสุ่มรายชื่อ</h3><button onclick="document.getElementById('wheel-modal').remove()" class="text-white/40 hover:text-white text-xl">✕</button></div>
+      <div class="p-5 flex flex-col items-center">
+        <div class="relative mb-4"><canvas id="wc" width="300" height="300" class="block rounded-full" style="box-shadow:0 0 32px rgba(124,58,237,.5)"></canvas></div>
+        <div id="winner-box" class="hidden mb-4 text-center anim-bounce glass rounded-2xl border border-yellow-500/30 p-4 w-full">
+          <p class="text-white/60 text-sm mb-1">ผู้ถูกสุ่ม 🎉</p>
+          <p id="winner-name" class="text-2xl font-bold font-kanit text-yellow-300"></p>
+        </div>
+        <button id="spin-btn" onclick="doSpin()" class="w-full py-4 rounded-2xl btn-grad font-bold text-lg shadow-xl mb-3">🎡 หมุน!</button>
+        <p class="text-xs text-white/40">ผู้เข้าร่วม ${parts.length} คน</p>
+      </div>
+    </div>
+  </div>`);
+
+  // Init wheel canvas
+  const cv=document.getElementById('wc'), ctx=cv.getContext('2d');
+  const cx=150,cy=150,R=138;
+  const COLS=['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9'];
+  const seg=(2*Math.PI)/parts.length;
+  let angle=0,speed=0,spinning=false;
+
+  function draw(a){
+    ctx.clearRect(0,0,300,300);
+    parts.forEach((p,i)=>{
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,R,a+i*seg,a+(i+1)*seg);ctx.closePath();
+      ctx.fillStyle=COLS[i%COLS.length];ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+      ctx.save();ctx.translate(cx,cy);ctx.rotate(a+i*seg+seg/2);ctx.textAlign='right';ctx.fillStyle='#1a1a2e';
+      ctx.font=`bold ${Math.max(10,14-parts.length*.3)}px Sarabun,sans-serif`;
+      ctx.fillText(p.name.length>10?p.name.slice(0,10)+'…':p.name,R-10,5);ctx.restore();
+    });
+    ctx.beginPath();ctx.arc(cx,cy,18,0,Math.PI*2);ctx.fillStyle='#1a1a2e';ctx.fill();
+    ctx.beginPath();ctx.moveTo(cx+R+8,cy);ctx.lineTo(cx+R-8,cy-12);ctx.lineTo(cx+R-8,cy+12);ctx.closePath();ctx.fillStyle='#FF6B6B';ctx.fill();
+  }
+  draw(0);
+  window._wheelDraw=draw;
+  window._wheelState={angle,speed,spinning,parts,seg,cv,ctx};
+
+  window.doSpin=function(){
+    const ws=window._wheelState;
+    if(ws.spinning)return;
+    ws.spinning=true;ws.speed=.2+Math.random()*.3;
+    document.getElementById('spin-btn').disabled=true;
+    document.getElementById('spin-btn').textContent='🌀 กำลังหมุน...';
+    document.getElementById('winner-box')?.classList.add('hidden');
+    (function frame(){
+      ws.angle+=ws.speed;ws.speed*=.985;
+      window._wheelDraw(ws.angle);
+      if(ws.speed<.002){
+        ws.spinning=false;
+        const norm=(((-ws.angle)%(2*Math.PI))+(2*Math.PI))%(2*Math.PI);
+        const wi=Math.floor(norm/ws.seg)%ws.parts.length;
+        const winner=ws.parts[wi];
+        document.getElementById('winner-name').textContent=winner.name;
+        document.getElementById('winner-box').classList.remove('hidden');
+        confetti(2500);
+        toast(`🎉 ได้รับเลือก: ${winner.name}`,'success',5000);
+        document.getElementById('spin-btn').disabled=false;
+        document.getElementById('spin-btn').textContent='🎡 หมุนอีกครั้ง';
+        return;
+      }
+      requestAnimationFrame(frame);
+    })();
+  };
+}
+
+// ══════════════════════════════════════════════════════════════
+// START
+// ══════════════════════════════════════════════════════════════
+init();
+</script>
+</body>
+</html>
