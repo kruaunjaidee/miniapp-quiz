@@ -833,37 +833,43 @@ async function finishQuiz() {
 async function sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSpent }) {
   if (!liff.isLoggedIn()) return;
 
-  const inClient = liff.isInClient();
+  const inClient  = liff.isInClient();
   console.log('[Flex] isInClient:', inClient);
 
-  const name      = STUDENT?.full_name || USER.displayName;
+  const name      = STUDENT?.full_name  || USER.displayName;
   const studentNo = STUDENT?.student_no || '-';
   const className = STUDENT?.class_name || '-';
-  const quizTitle = QUIZ_SET?.title || 'แบบทดสอบ';
-  const typeLabel = ({ pretest:'กอนเรียน (T1)', posttest:'หลังเรียน (T2)', practice:'ฝึกหัด' })[QUIZ_SET?.test_type] || '';
-  const avatar    = USER.pictureUrl || 'https://via.placeholder.com/100';
-  const pctRound  = pct.toFixed(0);
+  const quizTitle = QUIZ_SET?.title     || 'แบบทดสอบ';
+  const typeLabel = ({
+    pretest:  'ก่อนเรียน (T1)',
+    posttest: 'หลังเรียน (T2)',
+    practice: 'ฝึกหัด',
+  })[QUIZ_SET?.test_type] || '';
+  const avatar   = USER.pictureUrl || 'https://via.placeholder.com/100';
+  const pctRound = pct.toFixed(0);
   const m = Math.floor(timeSpent / 60), s = timeSpent % 60;
-  const timeStr   = `${m}:${s.toString().padStart(2,'0')}`;
-  const appUrl    = location.origin + location.pathname;
+  const timeStr  = `${m}:${s.toString().padStart(2,'0')}`;
+  // ปุ่มกลับ mini app
+  const appUrl     = 'https://miniapp.line.me/2009785071-wSkgakrd';
+  const desktopUrl = location.origin + location.pathname;
 
+  // สีตามผล
   const headerBg  = isPassed ? '#059669' : '#b45309';
   const pctColor  = isPassed ? '#059669' : '#b45309';
   const statBg    = isPassed ? '#065f46' : '#78350f';
-  const statTxt   = isPassed ? '#ffffff' : '#fef3c7';
-  const resultTxt = isPassed ? 'สอบผาน' : 'ยังไมผาน';
-  const passedTxt = isPassed ? 'ผาน' : 'ไมผาน';
+  const statTxt   = isPassed ? '#ffffff'  : '#fef3c7';
+  const resultTxt = isPassed ? 'สอบผ่าน' : 'ยังไม่ผ่าน';
+  const passedTxt = isPassed ? 'ผ่าน'    : 'ไม่ผ่าน';
 
-  // Flex contents (ใช้ร่วมกันทั้งสองโหมด)
   const flexContents = {
     type: 'bubble',
     header: {
       type: 'box',
       layout: 'vertical',
       backgroundColor: headerBg,
-      paddingAll: '16px',
+      paddingAll: '18px',
       contents: [
-        { type:'text', text: resultTxt, size:'xl', weight:'bold', color:'#ffffff', align:'center' },
+        { type:'text', text: resultTxt, size:'xl', weight:'bold', color:'#ffffff', align:'center', margin:'md', gravity:'center' },
         { type:'text', text: quizTitle, size:'sm', weight:'bold', color:'#ffffff', align:'center', wrap:true, margin:'sm' },
         { type:'text', text: typeLabel, size:'xs', color:'#d1fae5', align:'center', margin:'xs' }
       ]
@@ -874,45 +880,58 @@ async function sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSp
       spacing: 'md',
       paddingAll: '16px',
       contents: [
+        // ── Profile row: รูปกลม + ชื่อ/ชั้น ──
         {
           type: 'box', layout: 'horizontal', spacing: 'md', alignItems: 'center',
           contents: [
-            { type:'image', url: avatar, size:'xs', aspectRatio:'1:1', aspectMode:'cover', cornerRadius:'50%' },
             {
-              type:'box', layout:'vertical', flex:1,
-              contents:[
+              type: 'box', layout: 'vertical', cornerRadius: '100px',
+              contents: [{
+                type: 'box', layout: 'vertical',
+                cornerRadius: '100px', width: '60px', height: '60px',
+                contents: [{
+                  type: 'image', url: avatar,
+                  size: 'full', aspectRatio: '1:1', aspectMode: 'cover'
+                }]
+              }]
+            },
+            {
+              type: 'box', layout: 'vertical', flex: 1,
+              contents: [
                 { type:'text', text: name, size:'sm', weight:'bold', color:'#111827', wrap:true },
-                { type:'text', text:`ชั้น ${className} เลขที่ ${studentNo}`, size:'xs', color:'#6b7280', margin:'xs' }
+                { type:'text', text: `ชั้น ${className} เลขที่ ${studentNo}`, size:'xs', color:'#6b7280', margin:'xs' }
               ]
             }
           ]
         },
         { type:'separator' },
+        // ── คะแนน ──
         {
-          type:'box', layout:'vertical', alignItems:'center',
-          contents:[
+          type: 'box', layout: 'vertical', alignItems: 'center',
+          contents: [
             { type:'text', text:`${pctRound}%`, size:'xxl', weight:'bold', color: pctColor, align:'center' },
             { type:'text', text:`${total} / ${max} คะแนน  ถูก ${correct} ข้อ`, size:'xs', color:'#6b7280', align:'center', margin:'xs' }
           ]
         },
         { type:'separator' },
+        // ── Stats ──
         {
-          type:'box', layout:'horizontal', spacing:'sm',
-          contents:[
+          type: 'box', layout: 'horizontal', spacing: 'sm',
+          contents: [
             {
               type:'box', layout:'vertical', flex:1,
               backgroundColor:'#f3f4f6', cornerRadius:'8px', paddingAll:'8px',
               contents:[
-                { type:'text', text:'เวลา', size:'xxs', color:'#6b7280', align:'center' },
-                { type:'text', text: timeStr, size:'sm', weight:'bold', color:'#111827', align:'center', margin:'xs' }
+                { type:'text', text:'เวลา',  size:'xxs', color:'#6b7280', align:'center' },
+                { type:'text', text: timeStr, size:'sm',  weight:'bold', color:'#111827', align:'center', margin:'xs' }
               ]
             },
             {
               type:'box', layout:'vertical', flex:1,
               backgroundColor: statBg, cornerRadius:'8px', paddingAll:'8px',
               contents:[
-                { type:'text', text:'ผลสอบ', size:'xxs', color: statTxt, align:'center' },
-                { type:'text', text: passedTxt, size:'sm', weight:'bold', color:'#ffffff', align:'center', margin:'xs' }
+                { type:'text', text:'ผลสอบ',   size:'xxs', color: statTxt,  align:'center' },
+                { type:'text', text: passedTxt, size:'sm',  weight:'bold', color:'#ffffff', align:'center', margin:'xs' }
               ]
             },
             {
@@ -928,69 +947,62 @@ async function sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSp
       ]
     },
     footer: {
-      type:'box', layout:'vertical', paddingAll:'12px',
-      contents:[{
-        type:'button',
-        action:{ type:'uri', label:'กลับไปที่ระบบข้อสอบ', uri: appUrl },
-        style:'primary', color: headerBg, height:'sm'
+      type: 'box', layout: 'vertical', paddingAll: '12px',
+      contents: [{
+        type: 'button',
+        action: {
+          type: 'uri',
+          label: 'กลับไปที่ระบบข้อสอบ',
+          uri: appUrl,
+          altUri: { desktop: desktopUrl }
+        },
+        style: 'primary', color: headerBg, height: 'sm'
       }]
     }
   };
 
   const flexMessage = {
     type: 'flex',
-    altText: `ผลสอบ ${quizTitle} - ${name} ${pctRound}%`,
+    altText: `ผลสอบ ${quizTitle} - ${name} ได้ ${pctRound}%`,
     contents: flexContents,
   };
 
-  // ── DEBUG: log ค่าทุกอย่างก่อนส่งจริง ──
+  // ── DEBUG ──
   console.group('[Flex Debug]');
-  console.log('inClient    :', inClient);
-  console.log('name        :', name);
-  console.log('studentNo   :', studentNo);
-  console.log('className   :', className);
-  console.log('quizTitle   :', quizTitle);
-  console.log('typeLabel   :', typeLabel);
-  console.log('avatar      :', avatar);
-  console.log('pctRound    :', pctRound);
-  console.log('total/max   :', total, '/', max);
-  console.log('correct     :', correct, '/', QUESTIONS.length);
-  console.log('timeStr     :', timeStr);
-  console.log('isPassed    :', isPassed);
-  console.log('appUrl      :', appUrl);
-  console.log('flexMessage :', JSON.stringify(flexMessage, null, 2));
+  console.log('inClient :', inClient);
+  console.log('name     :', name, '| class:', className, '| no:', studentNo);
+  console.log('score    :', `${total}/${max} = ${pctRound}%`);
+  console.log('resultTxt:', resultTxt, '| passedTxt:', passedTxt);
+  console.log('typeLabel:', typeLabel);
+  console.log('appUrl   :', appUrl);
+  console.log('avatar   :', avatar);
+  console.log('JSON     :', JSON.stringify(flexMessage, null, 2));
   console.groupEnd();
 
-  // ── Validate: ตรวจ field สำคัญก่อนส่ง ──
+  // ── Validate ──
   const errs = [];
-  if (!flexMessage.altText)              errs.push('altText ว่าง');
-  if (!flexContents.header)              errs.push('ไม่มี header');
-  if (!flexContents.body)                errs.push('ไม่มี body');
-  if (!flexContents.footer)             errs.push('ไม่มี footer');
-  if (!avatar.startsWith('http'))       errs.push('avatar URL ผิด: ' + avatar);
-  if (!appUrl.startsWith('http'))       errs.push('appUrl ผิด: ' + appUrl);
+  if (!name)                        errs.push('name ว่าง');
+  if (!avatar.startsWith('http'))   errs.push('avatar URL ผิด');
+  if (!appUrl.startsWith('http'))   errs.push('appUrl ผิด');
+  if (!flexMessage.altText)         errs.push('altText ว่าง');
   if (errs.length) {
-    console.error('[Flex] Validation failed:', errs);
-    toast('ไม่สามารถส่ง Flex: ' + errs.join(', '), 'warning');
+    console.error('[Flex] Validate fail:', errs);
+    toast('Flex validate fail: ' + errs.join(', '), 'warning');
     return;
   }
 
   try {
     if (inClient) {
-      console.log('[Flex] → liff.sendMessages()');
+      console.log('[Flex] → sendMessages()');
       await liff.sendMessages([flexMessage]);
       console.log('[Flex] sendMessages OK');
     } else {
-      console.log('[Flex] → liff.shareTargetPicker()');
+      console.log('[Flex] → shareTargetPicker()');
       const result = await liff.shareTargetPicker([flexMessage]);
-      if (result) {
-        console.log('[Flex] shareTargetPicker OK, status:', result.status);
-      } else {
-        console.log('[Flex] shareTargetPicker ยกเลิก');
-      }
+      console.log('[Flex] shareTargetPicker:', result ? result.status : 'ยกเลิก');
     }
   } catch(e) {
-    console.error('[Flex] send error:', e?.code, e?.message, e);
+    console.error('[Flex] error:', e?.code, e?.message, e);
     toast('Flex error: ' + (e?.message || e?.code || 'unknown'), 'warning');
   }
 }
