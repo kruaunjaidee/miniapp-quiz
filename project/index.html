@@ -939,28 +939,59 @@ async function sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSp
 
   const flexMessage = {
     type: 'flex',
-    altText: `ผลสอบ ${quizTitle} - ${name} ได้ ${pctRound}%`,
+    altText: `ผลสอบ ${quizTitle} - ${name} ${pctRound}%`,
     contents: flexContents,
   };
 
+  // ── DEBUG: log ค่าทุกอย่างก่อนส่งจริง ──
+  console.group('[Flex Debug]');
+  console.log('inClient    :', inClient);
+  console.log('name        :', name);
+  console.log('studentNo   :', studentNo);
+  console.log('className   :', className);
+  console.log('quizTitle   :', quizTitle);
+  console.log('typeLabel   :', typeLabel);
+  console.log('avatar      :', avatar);
+  console.log('pctRound    :', pctRound);
+  console.log('total/max   :', total, '/', max);
+  console.log('correct     :', correct, '/', QUESTIONS.length);
+  console.log('timeStr     :', timeStr);
+  console.log('isPassed    :', isPassed);
+  console.log('appUrl      :', appUrl);
+  console.log('flexMessage :', JSON.stringify(flexMessage, null, 2));
+  console.groupEnd();
+
+  // ── Validate: ตรวจ field สำคัญก่อนส่ง ──
+  const errs = [];
+  if (!flexMessage.altText)              errs.push('altText ว่าง');
+  if (!flexContents.header)              errs.push('ไม่มี header');
+  if (!flexContents.body)                errs.push('ไม่มี body');
+  if (!flexContents.footer)             errs.push('ไม่มี footer');
+  if (!avatar.startsWith('http'))       errs.push('avatar URL ผิด: ' + avatar);
+  if (!appUrl.startsWith('http'))       errs.push('appUrl ผิด: ' + appUrl);
+  if (errs.length) {
+    console.error('[Flex] Validation failed:', errs);
+    toast('ไม่สามารถส่ง Flex: ' + errs.join(', '), 'warning');
+    return;
+  }
+
   try {
     if (inClient) {
-      // ── อยู่ใน LINE แอป → ส่งเข้าห้องแชทปัจจุบันทันที ──
-      console.log('[Flex] sendMessages (inClient)...');
+      console.log('[Flex] → liff.sendMessages()');
       await liff.sendMessages([flexMessage]);
       console.log('[Flex] sendMessages OK');
     } else {
-      // ── อยู่ใน external browser → เปิด Share Target Picker ให้เลือกห้องแชท ──
-      console.log('[Flex] shareTargetPicker (external)...');
+      console.log('[Flex] → liff.shareTargetPicker()');
       const result = await liff.shareTargetPicker([flexMessage]);
       if (result) {
         console.log('[Flex] shareTargetPicker OK, status:', result.status);
       } else {
-        console.log('[Flex] shareTargetPicker ถูกยกเลิก');
+        console.log('[Flex] shareTargetPicker ยกเลิก');
       }
     }
   } catch(e) {
-    console.error('[Flex] error:', e?.code, e?.message);
+    console.error('[Flex] send error:', e?.code, e?.message, e);
+    toast('Flex error: ' + (e?.message || e?.code || 'unknown'), 'warning');
   }
 }
 
