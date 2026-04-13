@@ -136,12 +136,11 @@ body{
 <script>
 'use strict';
 // ╔══════════════════════════════════════════════════════════════╗
-// ║  ⚙️  CONFIG — แก้ค่า 2 บรรทัดนี้เท่านั้น                   ║
+// ║  ⚙️  CONFIG                                                 ║
 // ╚══════════════════════════════════════════════════════════════╝
-const LIFF_ID        = '2009785071-wSkgakrd';                         // ← ใส่ LIFF ID 
-const SUPABASE_URL   = 'https://bixtzckflnayzyuvqisl.supabase.co';     // ← ใส่ URL
-const SUPABASE_KEY   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpeHR6Y2tmbG5heXp5dXZxaXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQxMTIyMjksImV4cCI6MjA2OTY4ODIyOX0.GiES3FL3RkQ2QBHFbDCOSaFMoXtAYhA__9YN5L1xM54';                        // ← ใส่ Anon Key
-// Edge Function base URL (ชื่อ function = "api")
+const LIFF_ID        = '2009785071-wSkgakrd';
+const SUPABASE_URL   = 'https://bixtzckflnayzyuvqisl.supabase.co';
+const SUPABASE_KEY   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpeHR6Y2tmbG5heXp5dXZxaXNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQxMTIyMjksImV4cCI6MjA2OTY4ODIyOX0.GiES3FL3RkQ2QBHFbDCOSaFMoXtAYhA__9YN5L1xM54';
 const API_BASE       = `${SUPABASE_URL}/functions/v1/miniapp-quiz`;
 
 // ══════════════════════════════════════════════════════════════
@@ -829,15 +828,17 @@ async function sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSp
   const quizTitle = QUIZ_SET?.title     || 'แบบทดสอบ';
   const typeLabel = { pretest:'ก่อนเรียน (T1)', posttest:'หลังเรียน (T2)', practice:'ฝึกหัด' }[QUIZ_SET?.test_type] || '';
   const avatar    = USER.pictureUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=6366f1&color=fff&size=200`;
-  const pctRound  = pct.toFixed(1);
+  const pctRound  = pct.toFixed(0);
   const m = Math.floor(timeSpent / 60), s = timeSpent % 60;
   const timeStr   = `${m}:${s.toString().padStart(2,'0')}`;
-  const appUrl    = location.origin + location.pathname;   // URL กลับ mini app
+  const appUrl    = location.origin + location.pathname;
 
-  // สีตามผล
-  const headerColor = isPassed ? '#059669' : '#d97706'; // green / amber
-  const resultEmoji = isPassed ? '🎉 สอบผ่าน!' : '📚 ยังไม่ผ่าน';
-  const pctColor    = isPassed ? '#10b981'  : '#f59e0b';
+  // สีตามผล (ต้องเป็น hex ล้วน ไม่รองรับ rgba)
+  const headerBg  = isPassed ? '#059669' : '#b45309';
+  const resultTxt = isPassed ? '🎉 สอบผ่าน!' : '📚 ยังไม่ผ่าน';
+  const pctColor  = isPassed ? '#10b981'  : '#f59e0b';
+  const statBg    = isPassed ? '#064e3b'  : '#78350f';
+  const btnColor  = isPassed ? '#059669'  : '#b45309';
 
   const flexMessage = {
     type: 'flex',
@@ -845,46 +846,26 @@ async function sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSp
     contents: {
       type: 'bubble',
       size: 'kilo',
+      // ── Header ──
       header: {
         type: 'box',
         layout: 'vertical',
-        backgroundColor: headerColor,
+        backgroundColor: headerBg,
         paddingAll: '16px',
         contents: [
-          {
-            type: 'text',
-            text: resultEmoji,
-            size: 'xl',
-            weight: 'bold',
-            color: '#ffffff',
-            align: 'center'
-          },
-          {
-            type: 'text',
-            text: quizTitle,
-            size: 'sm',
-            color: 'rgba(255,255,255,0.85)',
-            align: 'center',
-            wrap: true,
-            margin: 'sm'
-          },
-          {
-            type: 'text',
-            text: typeLabel,
-            size: 'xs',
-            color: 'rgba(255,255,255,0.65)',
-            align: 'center'
-          }
+          { type:'text', text: resultTxt,  size:'xl', weight:'bold', color:'#ffffff', align:'center' },
+          { type:'text', text: quizTitle,  size:'sm', color:'#d1fae5', align:'center', wrap:true, margin:'sm' },
+          { type:'text', text: typeLabel,  size:'xs', color:'#a7f3d0', align:'center' }
         ]
       },
+      // ── Body ──
       body: {
         type: 'box',
         layout: 'vertical',
         paddingAll: '16px',
         spacing: 'md',
-        backgroundColor: '#0f0f1a',
         contents: [
-          // ── Profile row ──
+          // Profile row
           {
             type: 'box',
             layout: 'horizontal',
@@ -894,106 +875,85 @@ async function sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSp
               {
                 type: 'image',
                 url: avatar,
-                size: '56px',
+                size: 'xxs',
                 aspectRatio: '1:1',
                 aspectMode: 'cover',
-                cornerRadius: '28px'
+                cornerRadius: '50%'
               },
               {
                 type: 'box',
                 layout: 'vertical',
                 flex: 1,
                 contents: [
-                  { type:'text', text: name,       size:'sm', weight:'bold', color:'#f1f5f9', wrap:true },
-                  { type:'text', text: `ชั้น ${className}  เลขที่ ${studentNo}`, size:'xs', color:'#94a3b8', margin:'xs' }
+                  { type:'text', text: name, size:'sm', weight:'bold', color:'#111827', wrap:true },
+                  { type:'text', text:`ชั้น ${className}  เลขที่ ${studentNo}`, size:'xs', color:'#6b7280', margin:'xs' }
                 ]
               }
             ]
           },
-          { type:'separator', margin:'md', color:'rgba(255,255,255,0.08)' },
-          // ── Score circle row ──
+          { type:'separator', margin:'md' },
+          // Score
           {
             type: 'box',
             layout: 'vertical',
             alignItems: 'center',
-            margin: 'sm',
+            margin:'sm',
             contents: [
-              {
-                type: 'text',
-                text: `${pctRound}%`,
-                size: '3xl',
-                weight: 'bold',
-                color: pctColor,
-                align: 'center'
-              },
-              {
-                type: 'text',
-                text: `ถูก ${correct} / ${max} คะแนน  (${total}/${max})`,
-                size: 'xs',
-                color: '#94a3b8',
-                align: 'center'
-              }
+              { type:'text', text:`${pctRound}%`, size:'3xl', weight:'bold', color: pctColor, align:'center' },
+              { type:'text', text:`ถูก ${correct} ข้อ  |  ${total}/${max} คะแนน`, size:'xs', color:'#6b7280', align:'center' }
             ]
           },
-          { type:'separator', color:'rgba(255,255,255,0.08)' },
-          // ── Stats grid ──
+          { type:'separator' },
+          // Stats
           {
             type: 'box',
             layout: 'horizontal',
             spacing: 'sm',
             contents: [
               {
-                type: 'box', layout:'vertical', flex:1,
-                backgroundColor:'rgba(255,255,255,0.05)',
-                cornerRadius:'10px', paddingAll:'10px',
+                type:'box', layout:'vertical', flex:1,
+                backgroundColor:'#f3f4f6',
+                cornerRadius:'8px', paddingAll:'8px',
                 contents:[
-                  { type:'text', text:'⏱ เวลา', size:'xxs', color:'#94a3b8', align:'center' },
-                  { type:'text', text: timeStr,  size:'sm',  weight:'bold', color:'#f1f5f9', align:'center', margin:'xs' }
+                  { type:'text', text:'⏱ เวลา', size:'xxs', color:'#6b7280', align:'center' },
+                  { type:'text', text: timeStr, size:'sm', weight:'bold', color:'#111827', align:'center' }
                 ]
               },
               {
-                type: 'box', layout:'vertical', flex:1,
-                backgroundColor: isPassed ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                cornerRadius:'10px', paddingAll:'10px',
+                type:'box', layout:'vertical', flex:1,
+                backgroundColor: statBg,
+                cornerRadius:'8px', paddingAll:'8px',
                 contents:[
-                  { type:'text', text:'ผลสอบ', size:'xxs', color:'#94a3b8', align:'center' },
+                  { type:'text', text:'ผลสอบ', size:'xxs', color:'#d1fae5', align:'center' },
                   { type:'text', text: isPassed ? '✅ ผ่าน' : '❌ ไม่ผ่าน',
-                    size:'sm', weight:'bold',
-                    color: isPassed ? '#10b981' : '#ef4444',
-                    align:'center', margin:'xs' }
+                    size:'sm', weight:'bold', color:'#ffffff', align:'center' }
                 ]
               },
               {
-                type: 'box', layout:'vertical', flex:1,
-                backgroundColor:'rgba(255,255,255,0.05)',
-                cornerRadius:'10px', paddingAll:'10px',
+                type:'box', layout:'vertical', flex:1,
+                backgroundColor:'#f3f4f6',
+                cornerRadius:'8px', paddingAll:'8px',
                 contents:[
-                  { type:'text', text:'ข้อถูก', size:'xxs', color:'#94a3b8', align:'center' },
-                  { type:'text', text: `${correct}/${QUESTIONS.length}`,
-                    size:'sm', weight:'bold', color:'#f1f5f9', align:'center', margin:'xs' }
+                  { type:'text', text:'ข้อถูก', size:'xxs', color:'#6b7280', align:'center' },
+                  { type:'text', text:`${correct}/${QUESTIONS.length}`, size:'sm', weight:'bold', color:'#111827', align:'center' }
                 ]
               }
             ]
           }
         ]
       },
+      // ── Footer ──
       footer: {
         type: 'box',
         layout: 'vertical',
         paddingAll: '12px',
-        backgroundColor: '#0f0f1a',
         contents: [
           {
             type: 'button',
-            action: {
-              type: 'uri',
-              label: '📚 กลับไปที่ระบบข้อสอบ',
-              uri: appUrl
-            },
+            action: { type:'uri', label:'📚 กลับไปที่ระบบข้อสอบ', uri: appUrl },
             style: 'primary',
-            color: headerColor,
-            height: 'sm',
-            cornerRadius: '12px'
+            color: btnColor,
+            height: 'sm'
           }
         ]
       }
@@ -1003,7 +963,6 @@ async function sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSp
   try {
     await liff.sendMessages([flexMessage]);
   } catch(e) {
-    // sendMessages อาจ fail ถ้าผู้ใช้ปฏิเสธ หรือไม่ได้อยู่ใน chat — ไม่ block UX
     console.warn('sendMessages failed:', e?.message || e);
   }
 }
@@ -1262,8 +1221,49 @@ async function toggleSuspend(userId, suspend) {
 }
 
 function confirmDeleteUser(userId, name) {
-  if(!confirm(`⚠️ ลบผลการสอบทั้งหมดของ "${name}" ใช่หรือไม่?\n\n(ข้อมูลโปรไฟล์จะไม่ถูกลบ)`) ) return;
-  deleteUserData(userId, name);
+  // ลบ modal เก่าถ้ามี
+  document.getElementById('del-modal')?.remove();
+
+  document.body.insertAdjacentHTML('beforeend', `
+  <div id="del-modal" class="fixed inset-0 z-[200] flex items-center justify-center p-4"
+    style="background:rgba(0,0,0,0.8);backdrop-filter:blur(8px)">
+    <div class="max-w-sm w-full rounded-3xl overflow-hidden shadow-2xl anim-slide"
+      style="background:#1a0a0a;border:1px solid rgba(239,68,68,0.3)">
+
+      <!-- Header แดง -->
+      <div class="px-6 pt-6 pb-4 text-center"
+        style="background:linear-gradient(135deg,rgba(239,68,68,0.2),rgba(185,28,28,0.15))">
+        <div class="w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center text-3xl"
+          style="background:rgba(239,68,68,0.15);border:2px solid rgba(239,68,68,0.4)">🗑</div>
+        <h3 class="text-lg font-bold font-kanit text-red-400">ยืนยันการลบผลการสอบ</h3>
+      </div>
+
+      <!-- Body -->
+      <div class="px-6 py-4">
+        <div class="rounded-2xl p-4 mb-4 text-center"
+          style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2)">
+          <p class="text-sm font-semibold text-white mb-1">${esc(name)}</p>
+          <p class="text-xs text-white/50">ผลการสอบทั้งหมดจะถูกลบถาวร</p>
+        </div>
+        <div class="rounded-xl p-3 mb-5"
+          style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2)">
+          <p class="text-xs text-amber-400">⚠️ ข้อมูลโปรไฟล์ LINE จะไม่ถูกลบ แต่ผลสอบและอันดับจะหายถาวร</p>
+        </div>
+        <div class="flex gap-3">
+          <button onclick="document.getElementById('del-modal').remove()"
+            class="flex-1 py-3 rounded-2xl text-sm font-semibold transition"
+            style="background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7)">
+            ยกเลิก
+          </button>
+          <button onclick="document.getElementById('del-modal').remove();deleteUserData('${userId}','${esc(name)}')"
+            class="flex-1 py-3 rounded-2xl text-sm font-bold text-white transition"
+            style="background:linear-gradient(135deg,#dc2626,#991b1b)">
+            🗑 ลบผลการสอบ
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>`);
 }
 
 async function deleteUserData(userId, name) {
