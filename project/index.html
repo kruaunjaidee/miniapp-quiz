@@ -831,151 +831,136 @@ async function finishQuiz() {
 // FLEX MESSAGE — ส่งผลสอบเข้าแชท LINE
 // ══════════════════════════════════════════════════════════════
 async function sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSpent }) {
-  // ส่งได้เฉพาะใน LINE client เท่านั้น
-  if (!liff.isInClient()) return;
+  if (!liff.isLoggedIn()) return;
 
-  const name      = STUDENT?.full_name  || USER.displayName;
+  const inClient = liff.isInClient();
+  console.log('[Flex] isInClient:', inClient);
+
+  const name      = STUDENT?.full_name || USER.displayName;
   const studentNo = STUDENT?.student_no || '-';
   const className = STUDENT?.class_name || '-';
-  const quizTitle = QUIZ_SET?.title     || 'แบบทดสอบ';
-  const typeLabel = { pretest:'ก่อนเรียน (T1)', posttest:'หลังเรียน (T2)', practice:'ฝึกหัด' }[QUIZ_SET?.test_type] || '';
-  const avatar    = USER.pictureUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=6366f1&color=fff&size=200`;
+  const quizTitle = QUIZ_SET?.title || 'แบบทดสอบ';
+  const typeLabel = ({ pretest:'กอนเรียน (T1)', posttest:'หลังเรียน (T2)', practice:'ฝึกหัด' })[QUIZ_SET?.test_type] || '';
+  const avatar    = USER.pictureUrl || 'https://via.placeholder.com/100';
   const pctRound  = pct.toFixed(0);
   const m = Math.floor(timeSpent / 60), s = timeSpent % 60;
   const timeStr   = `${m}:${s.toString().padStart(2,'0')}`;
   const appUrl    = location.origin + location.pathname;
 
-  // สีตามผล (ต้องเป็น hex ล้วน ไม่รองรับ rgba)
   const headerBg  = isPassed ? '#059669' : '#b45309';
-  const resultTxt = isPassed ? '🎉 สอบผ่าน!' : '📚 ยังไม่ผ่าน';
-  const pctColor  = isPassed ? '#10b981'  : '#f59e0b';
-  const statBg    = isPassed ? '#064e3b'  : '#78350f';
-  const btnColor  = isPassed ? '#059669'  : '#b45309';
+  const pctColor  = isPassed ? '#059669' : '#b45309';
+  const statBg    = isPassed ? '#065f46' : '#78350f';
+  const statTxt   = isPassed ? '#ffffff' : '#fef3c7';
+  const resultTxt = isPassed ? 'สอบผาน' : 'ยังไมผาน';
+  const passedTxt = isPassed ? 'ผาน' : 'ไมผาน';
 
-  const flexMessage = {
-    type: 'flex',
-    altText: `📊 ผลสอบ ${quizTitle} — ${name} ได้ ${pctRound}%`,
-    contents: {
-      type: 'bubble',
-      size: 'kilo',
-      // ── Header ──
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        backgroundColor: headerBg,
-        paddingAll: '16px',
-        contents: [
-          { type:'text', text: resultTxt,  size:'xl', weight:'bold', color:'#ffffff', align:'center' },
-          { type:'text', text: quizTitle,  size:'sm', color:'#d1fae5', align:'center', wrap:true, margin:'sm' },
-          { type:'text', text: typeLabel,  size:'xs', color:'#a7f3d0', align:'center' }
-        ]
-      },
-      // ── Body ──
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        paddingAll: '16px',
-        spacing: 'md',
-        contents: [
-          // Profile row
-          {
-            type: 'box',
-            layout: 'horizontal',
-            spacing: 'md',
-            alignItems: 'center',
-            contents: [
-              {
-                type: 'image',
-                url: avatar,
-                size: 'xxs',
-                aspectRatio: '1:1',
-                aspectMode: 'cover',
-                cornerRadius: '50%'
-              },
-              {
-                type: 'box',
-                layout: 'vertical',
-                flex: 1,
-                contents: [
-                  { type:'text', text: name, size:'sm', weight:'bold', color:'#111827', wrap:true },
-                  { type:'text', text:`ชั้น ${className}  เลขที่ ${studentNo}`, size:'xs', color:'#6b7280', margin:'xs' }
-                ]
-              }
-            ]
-          },
-          { type:'separator', margin:'md' },
-          // Score
-          {
-            type: 'box',
-            layout: 'vertical',
-            alignItems: 'center',
-            margin:'sm',
-            contents: [
-              { type:'text', text:`${pctRound}%`, size:'3xl', weight:'bold', color: pctColor, align:'center' },
-              { type:'text', text:`ถูก ${correct} ข้อ  |  ${total}/${max} คะแนน`, size:'xs', color:'#6b7280', align:'center' }
-            ]
-          },
-          { type:'separator' },
-          // Stats
-          {
-            type: 'box',
-            layout: 'horizontal',
-            spacing: 'sm',
-            contents: [
-              {
-                type:'box', layout:'vertical', flex:1,
-                backgroundColor:'#f3f4f6',
-                cornerRadius:'8px', paddingAll:'8px',
-                contents:[
-                  { type:'text', text:'⏱ เวลา', size:'xxs', color:'#6b7280', align:'center' },
-                  { type:'text', text: timeStr, size:'sm', weight:'bold', color:'#111827', align:'center' }
-                ]
-              },
-              {
-                type:'box', layout:'vertical', flex:1,
-                backgroundColor: statBg,
-                cornerRadius:'8px', paddingAll:'8px',
-                contents:[
-                  { type:'text', text:'ผลสอบ', size:'xxs', color:'#d1fae5', align:'center' },
-                  { type:'text', text: isPassed ? '✅ ผ่าน' : '❌ ไม่ผ่าน',
-                    size:'sm', weight:'bold', color:'#ffffff', align:'center' }
-                ]
-              },
-              {
-                type:'box', layout:'vertical', flex:1,
-                backgroundColor:'#f3f4f6',
-                cornerRadius:'8px', paddingAll:'8px',
-                contents:[
-                  { type:'text', text:'ข้อถูก', size:'xxs', color:'#6b7280', align:'center' },
-                  { type:'text', text:`${correct}/${QUESTIONS.length}`, size:'sm', weight:'bold', color:'#111827', align:'center' }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      // ── Footer ──
-      footer: {
-        type: 'box',
-        layout: 'vertical',
-        paddingAll: '12px',
-        contents: [
-          {
-            type: 'button',
-            action: { type:'uri', label:'📚 กลับไปที่ระบบข้อสอบ', uri: appUrl },
-            style: 'primary',
-            color: btnColor,
-            height: 'sm'
-          }
-        ]
-      }
+  // Flex contents (ใช้ร่วมกันทั้งสองโหมด)
+  const flexContents = {
+    type: 'bubble',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: headerBg,
+      paddingAll: '16px',
+      contents: [
+        { type:'text', text: resultTxt, size:'xl', weight:'bold', color:'#ffffff', align:'center' },
+        { type:'text', text: quizTitle, size:'sm', weight:'bold', color:'#ffffff', align:'center', wrap:true, margin:'sm' },
+        { type:'text', text: typeLabel, size:'xs', color:'#d1fae5', align:'center', margin:'xs' }
+      ]
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      paddingAll: '16px',
+      contents: [
+        {
+          type: 'box', layout: 'horizontal', spacing: 'md', alignItems: 'center',
+          contents: [
+            { type:'image', url: avatar, size:'xs', aspectRatio:'1:1', aspectMode:'cover', cornerRadius:'50%' },
+            {
+              type:'box', layout:'vertical', flex:1,
+              contents:[
+                { type:'text', text: name, size:'sm', weight:'bold', color:'#111827', wrap:true },
+                { type:'text', text:`ชั้น ${className} เลขที่ ${studentNo}`, size:'xs', color:'#6b7280', margin:'xs' }
+              ]
+            }
+          ]
+        },
+        { type:'separator' },
+        {
+          type:'box', layout:'vertical', alignItems:'center',
+          contents:[
+            { type:'text', text:`${pctRound}%`, size:'xxl', weight:'bold', color: pctColor, align:'center' },
+            { type:'text', text:`${total} / ${max} คะแนน  ถูก ${correct} ข้อ`, size:'xs', color:'#6b7280', align:'center', margin:'xs' }
+          ]
+        },
+        { type:'separator' },
+        {
+          type:'box', layout:'horizontal', spacing:'sm',
+          contents:[
+            {
+              type:'box', layout:'vertical', flex:1,
+              backgroundColor:'#f3f4f6', cornerRadius:'8px', paddingAll:'8px',
+              contents:[
+                { type:'text', text:'เวลา', size:'xxs', color:'#6b7280', align:'center' },
+                { type:'text', text: timeStr, size:'sm', weight:'bold', color:'#111827', align:'center', margin:'xs' }
+              ]
+            },
+            {
+              type:'box', layout:'vertical', flex:1,
+              backgroundColor: statBg, cornerRadius:'8px', paddingAll:'8px',
+              contents:[
+                { type:'text', text:'ผลสอบ', size:'xxs', color: statTxt, align:'center' },
+                { type:'text', text: passedTxt, size:'sm', weight:'bold', color:'#ffffff', align:'center', margin:'xs' }
+              ]
+            },
+            {
+              type:'box', layout:'vertical', flex:1,
+              backgroundColor:'#f3f4f6', cornerRadius:'8px', paddingAll:'8px',
+              contents:[
+                { type:'text', text:'ถูก', size:'xxs', color:'#6b7280', align:'center' },
+                { type:'text', text:`${correct}/${QUESTIONS.length}`, size:'sm', weight:'bold', color:'#111827', align:'center', margin:'xs' }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    footer: {
+      type:'box', layout:'vertical', paddingAll:'12px',
+      contents:[{
+        type:'button',
+        action:{ type:'uri', label:'กลับไปที่ระบบข้อสอบ', uri: appUrl },
+        style:'primary', color: headerBg, height:'sm'
+      }]
     }
   };
 
+  const flexMessage = {
+    type: 'flex',
+    altText: `ผลสอบ ${quizTitle} - ${name} ได้ ${pctRound}%`,
+    contents: flexContents,
+  };
+
   try {
-    await liff.sendMessages([flexMessage]);
+    if (inClient) {
+      // ── อยู่ใน LINE แอป → ส่งเข้าห้องแชทปัจจุบันทันที ──
+      console.log('[Flex] sendMessages (inClient)...');
+      await liff.sendMessages([flexMessage]);
+      console.log('[Flex] sendMessages OK');
+    } else {
+      // ── อยู่ใน external browser → เปิด Share Target Picker ให้เลือกห้องแชท ──
+      console.log('[Flex] shareTargetPicker (external)...');
+      const result = await liff.shareTargetPicker([flexMessage]);
+      if (result) {
+        console.log('[Flex] shareTargetPicker OK, status:', result.status);
+      } else {
+        console.log('[Flex] shareTargetPicker ถูกยกเลิก');
+      }
+    }
   } catch(e) {
-    console.warn('sendMessages failed:', e?.message || e);
+    console.error('[Flex] error:', e?.code, e?.message);
   }
 }
 
