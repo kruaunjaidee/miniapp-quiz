@@ -806,7 +806,9 @@ async function finishQuiz() {
         </div>
       </div>
       <div class="space-y-3">
-        <button onclick="openQuiz('${QUIZ_SET.id}')" class="w-full py-4 rounded-2xl border border-white/20 text-white/80 hover:bg-white/10 transition font-semibold text-sm">🔄 ทำอีกครั้ง</button>
+        ${QUIZ_SET.max_attempts === 0
+          ? `<button onclick="openQuiz('${QUIZ_SET.id}')" class="w-full py-4 rounded-2xl border border-white/20 text-white/80 hover:bg-white/10 transition font-semibold text-sm">🔄 ทำอีกครั้ง</button>`
+          : `<div class="glass rounded-2xl border border-white/10 p-3 text-center text-xs text-white/40">แบบทดสอบนี้ทำได้ครั้งเดียว</div>`}
         <button onclick="renderHome()" class="w-full py-4 rounded-2xl btn-grad font-bold shadow-lg">🏠 กลับหน้าหลัก</button>
         <button onclick="renderMyScores()" class="w-full py-4 rounded-2xl border border-purple-500/40 text-purple-300 hover:bg-purple-600/20 transition font-semibold text-sm">📊 ดูสถิติของฉัน</button>
       </div>
