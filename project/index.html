@@ -1201,8 +1201,8 @@ async function admQuizSets() {
       <td class="text-xs text-white/70">${q.time_limit_seconds>0?`${q.time_limit_seconds/60} นาที`:'ไม่จำกัด'}</td>
       <td class="text-xs text-white/70">${q.max_attempts===0?'ไม่จำกัด':`${q.max_attempts} ครั้ง`}</td>
       <td class="text-xs text-white/50">
-        ${q.shuffle_questions?'<span title="สุ่มข้อ" class="mr-1">🔀</span>':''}
-        ${q.shuffle_choices?'<span title="สุ่มตัวเลือก" class="mr-1">🔀ก</span>':''}
+        ${q.shuffle_questions?'<span title="สุ่มลำดับข้อ" class="mr-1">🎲</span>':''}
+        ${q.shuffle_choices?'<span title="สุ่มลำดับตัวเลือก" class="mr-1">🔀</span>':''}
         ${q.show_answer_after?'<span title="แสดงเฉลย">✅</span>':''}
       </td>
       <td><span class="badge ${q.is_published?'bg-green':'bg-red'}">${q.is_published?'✓ เผยแพร่':'○ Draft'}</span></td>
