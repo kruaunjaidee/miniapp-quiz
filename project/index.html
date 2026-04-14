@@ -421,7 +421,7 @@ function filterQuiz(type) {
   renderQuizCards(type==='all' ? ALL_QUIZ : ALL_QUIZ.filter(q=>q.test_type===type));
 }
 
-const QICON={multiple_choice:'📝',fill_blank:'✏️',drag_drop:'🎯',wheel_spin:'🎡',true_false:'✅'};
+const QICON={multiple_choice:'📝',fill_blank:'✏️',drag_drop:'🎯',wheel_spin:'🎡',true_false:'✅',memory:'🧠'};
 const TBADGE={pretest:['ก่อนเรียน','bg-blue'],posttest:['หลังเรียน','bg-green'],practice:['ฝึกหัด','bg-amber']};
 
 function renderQuizCards(list) {
@@ -478,6 +478,9 @@ async function openQuiz(id) {
       .eq('id',id).single();
     QUIZ_SET = q;
     VIDEO_WATCHED = !q.video_required;
+
+    // ── Memory game → เปิดหน้าเกม ──
+    if (q.quiz_type === 'memory') { openMemoryGame(q); return; }
 
     const lb = await getLB(id);
 
@@ -1015,6 +1018,416 @@ async function sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSp
 }
 
 // ══════════════════════════════════════════════════════════════
+// MEMORY GAME — เกมเปิดภาพความจำ
+// ══════════════════════════════════════════════════════════════
+let MEM_CARDS=[], MEM_FLIPPED=[], MEM_MATCHED=new Set(), MEM_LOCKED=false;
+let MEM_START=0, MEM_TIMER=null, MEM_MOVES=0, MEM_LB_CHAN=null;
+
+async function openMemoryGame(quizSet) {
+  showLoader('กำลังโหลดการ์ด...');
+  const cards = await api(`get-memory-cards?quiz_set_id=${quizSet.id}`);
+  if (!cards || !cards.length) {
+    toast('ยังไม่มีการ์ดในเกมนี้','warning'); renderHome(); return;
+  }
+  // แต่ละ card ใน DB = 1 คู่ (front+back) → สร้าง 2 การ์ดต่อ 1 record
+  const pairs = cards.flatMap((c,i) => [
+    { ...c, side:'front', uid: `${c.id}-f` },
+    { ...c, side:'back',  uid: `${c.id}-b` },
+  ]);
+  // กำหนดจำนวนคู่ตามขนาดหน้าจอ
+  const vw = window.innerWidth;
+  const maxPairs = vw < 400 ? 6 : vw < 600 ? 8 : vw < 900 ? 10 : 12;
+  const usedPairs = pairs.slice(0, maxPairs * 2);
+  MEM_CARDS = shuffle(usedPairs);
+  MEM_FLIPPED = []; MEM_MATCHED = new Set(); MEM_LOCKED = false;
+  MEM_MOVES = 0; MEM_START = Date.now();
+
+  // ดึง leaderboard
+  const lb = await getLB(quizSet.id, 10);
+  renderMemoryBoard(quizSet, lb);
+  memSubLB(quizSet.id);
+}
+
+function renderMemoryBoard(quizSet, lb=[]) {
+  const cols = window.innerWidth < 500 ? 3 : window.innerWidth < 700 ? 4 : 5;
+  setApp(`
+  <nav class="sticky top-0 z-40 glass border-b border-white/10 px-4 py-3">
+    <div class="flex items-center gap-3 max-w-2xl mx-auto">
+      <button onclick="memCleanup();renderHome()" class="p-2 rounded-xl hover:bg-white/10 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </button>
+      <h1 class="font-bold font-kanit text-sm flex-1 truncate">🧠 ${esc(quizSet.title)}</h1>
+      <div class="flex items-center gap-3 text-xs text-white/60">
+        <span id="mem-moves">0 ครั้ง</span>
+        <span id="mem-time" class="font-mono font-bold">0:00</span>
+      </div>
+    </div>
+  </nav>
+  <div class="max-w-2xl mx-auto px-3 py-4">
+    <!-- Grid การ์ด -->
+    <div id="mem-grid" style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px;"></div>
+    <!-- Leaderboard -->
+    <div class="mt-5 glass rounded-2xl border border-white/10 overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2.5 border-b border-white/10">
+        <h3 class="font-bold text-sm font-kanit">🏆 อันดับเร็วสุด</h3>
+        <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div><span class="text-xs text-white/40">Live</span></div>
+      </div>
+      <div id="mem-lb" class="p-3 space-y-1.5 max-h-52 overflow-y-auto">${renderMemLBHtml(lb)}</div>
+    </div>
+  </div>`);
+
+  renderMemGrid();
+  memStartTimer();
+}
+
+function renderMemGrid() {
+  const grid = document.getElementById('mem-grid');
+  if (!grid) return;
+  grid.innerHTML = MEM_CARDS.map((c,i) => `
+  <div class="mem-card" id="mc-${i}" onclick="memFlip(${i})"
+    style="aspect-ratio:1;perspective:600px;cursor:pointer;border-radius:12px;overflow:hidden;">
+    <div class="mem-inner" id="mi-${i}" style="
+      position:relative;width:100%;height:100%;transition:transform .45s;
+      transform-style:preserve-3d;">
+      <!-- Back (ด้านที่มองเห็นตอนแรก = ปกคลุม) -->
+      <div style="position:absolute;inset:0;backface-visibility:hidden;border-radius:12px;
+        background:linear-gradient(135deg,#4c1d95,#1e1b4b);
+        display:flex;align-items:center;justify-content:center;border:2px solid rgba(124,58,237,.4);">
+        <span style="font-size:1.8rem">🧠</span>
+      </div>
+      <!-- Front (ด้านที่เห็นหลังพลิก) -->
+      <div style="position:absolute;inset:0;backface-visibility:hidden;transform:rotateY(180deg);border-radius:12px;overflow:hidden;">
+        <img src="${esc(c.side==='front'?c.front_image_url:c.back_image_url||c.front_image_url)}"
+          style="width:100%;height:100%;object-fit:cover;"
+          onerror="this.parentElement.innerHTML='<div style=background:#1e1b4b;height:100%;display:flex;align-items:center;justify-content:center;font-size:2rem>🖼</div>'"
+          alt="card" crossorigin="anonymous"/>
+      </div>
+    </div>
+  </div>`).join('');
+}
+
+function memFlip(idx) {
+  if (MEM_LOCKED) return;
+  if (MEM_MATCHED.has(idx)) return;
+  if (MEM_FLIPPED.includes(idx)) return;
+
+  // พลิกการ์ด
+  const inner = document.getElementById(`mi-${idx}`);
+  if (inner) inner.style.transform = 'rotateY(180deg)';
+  MEM_FLIPPED.push(idx);
+
+  const card = MEM_CARDS[idx];
+
+  // แสดง description ของใบแรก
+  if (MEM_FLIPPED.length === 1 && card.description) {
+    showMemDesc(card.description);
+  }
+
+  if (MEM_FLIPPED.length === 2) {
+    MEM_LOCKED = true;
+    MEM_MOVES++;
+    const el = document.getElementById('mem-moves');
+    if (el) el.textContent = `${MEM_MOVES} ครั้ง`;
+
+    const [a, b] = MEM_FLIPPED;
+    const ca = MEM_CARDS[a], cb = MEM_CARDS[b];
+
+    if (ca.match_group === cb.match_group && a !== b) {
+      // ✅ จับคู่ได้
+      playMemSound(ca.sound_url || cb.sound_url);
+      setTimeout(() => {
+        ['mc-'+a,'mc-'+b].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) {
+            el.style.transition = 'transform .3s, opacity .4s';
+            el.style.transform = 'scale(1.1)';
+            el.style.opacity = '0.3';
+            setTimeout(() => { if(el) el.style.opacity='0'; el.style.pointerEvents='none'; }, 400);
+          }
+        });
+        MEM_MATCHED.add(a); MEM_MATCHED.add(b);
+        MEM_FLIPPED = []; MEM_LOCKED = false;
+        hideMemDesc();
+        if (MEM_MATCHED.size === MEM_CARDS.length) memFinish();
+      }, 600);
+    } else {
+      // ❌ ไม่ตรง — พลิกกลับ
+      setTimeout(() => {
+        [a,b].forEach(i => {
+          const inner = document.getElementById(`mi-${i}`);
+          if (inner) inner.style.transform = '';
+        });
+        MEM_FLIPPED = []; MEM_LOCKED = false;
+        hideMemDesc();
+      }, 1000);
+    }
+  }
+}
+
+function showMemDesc(text) {
+  let el = document.getElementById('mem-desc');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'mem-desc';
+    el.style.cssText = `
+      position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+      background:rgba(15,15,26,.95);border:1px solid rgba(124,58,237,.5);
+      border-radius:16px;padding:12px 20px;max-width:320px;width:90%;
+      color:#f1f5f9;font-size:14px;font-family:'Sarabun',sans-serif;
+      z-index:200;text-align:center;backdrop-filter:blur(12px);
+      box-shadow:0 8px 32px rgba(0,0,0,.5);animation:slideUp .3s ease;`;
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+}
+function hideMemDesc() {
+  document.getElementById('mem-desc')?.remove();
+}
+
+function playMemSound(url) {
+  if (!url) {
+    // เสียง default ด้วย Web Audio API
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.setValueAtTime(520, ctx.currentTime);
+      o.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + .15);
+      g.gain.setValueAtTime(.4, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + .4);
+      o.start(); o.stop(ctx.currentTime + .4);
+    } catch(e){}
+    return;
+  }
+  try { new Audio(url).play(); } catch(e){}
+}
+
+function memStartTimer() {
+  clearInterval(MEM_TIMER);
+  MEM_TIMER = setInterval(() => {
+    const el = document.getElementById('mem-time');
+    if (!el) { clearInterval(MEM_TIMER); return; }
+    const s = Math.floor((Date.now()-MEM_START)/1000);
+    el.textContent = `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+  }, 500);
+}
+
+async function memFinish() {
+  clearInterval(MEM_TIMER);
+  hideMemDesc();
+  const timeSpent = Math.floor((Date.now()-MEM_START)/1000);
+  const m = Math.floor(timeSpent/60), s = timeSpent%60;
+  confetti();
+
+  // บันทึก leaderboard (เวลาน้อยกว่า = ดีกว่า → ใช้ score = -timeSpent)
+  if (QUIZ_SET && USER) {
+    const { data: existing } = await sb.from('quiz_leaderboard')
+      .select('time_spent_seconds').eq('user_id',USER.userId).eq('quiz_set_id',QUIZ_SET.id).maybeSingle();
+    const isBetter = !existing || timeSpent < existing.time_spent_seconds;
+    if (isBetter) {
+      await sb.from('quiz_leaderboard').upsert({
+        user_id: USER.userId, quiz_set_id: QUIZ_SET.id, session_id: null,
+        display_name: STUDENT?.full_name || USER.displayName,
+        picture_url: USER.pictureUrl || null,
+        score: MEM_MOVES,            // จำนวนครั้งที่พลิก (น้อยกว่า = ดีกว่า)
+        percentage: 100,
+        time_spent_seconds: timeSpent,
+        achieved_at: new Date().toISOString(),
+      }, { onConflict: 'user_id,quiz_set_id' });
+    }
+  }
+
+  toast(`🎉 เล่นจบแล้ว! ${m}:${s.toString().padStart(2,'0')} น. | ${MEM_MOVES} ครั้ง`, 'success', 5000);
+
+  // Modal ผล
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px;';
+  modal.innerHTML = `
+  <div style="background:#12121e;border:1px solid rgba(124,58,237,.3);border-radius:24px;padding:28px;max-width:320px;width:100%;text-align:center;animation:bounceIn .5s ease">
+    <div style="font-size:4rem;margin-bottom:12px">🎉</div>
+    <h2 style="font-family:'Kanit',sans-serif;font-size:1.4rem;font-weight:700;color:#a78bfa;margin-bottom:4px">เล่นจบแล้ว!</h2>
+    <p style="color:rgba(255,255,255,.5);font-size:.85rem;margin-bottom:20px">${esc(QUIZ_SET?.title||'')}</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+      <div style="background:rgba(255,255,255,.06);border-radius:12px;padding:14px">
+        <div style="color:rgba(255,255,255,.4);font-size:.7rem">เวลา</div>
+        <div style="font-weight:700;font-size:1.2rem">${m}:${s.toString().padStart(2,'0')}</div>
+      </div>
+      <div style="background:rgba(255,255,255,.06);border-radius:12px;padding:14px">
+        <div style="color:rgba(255,255,255,.4);font-size:.7rem">จำนวนครั้ง</div>
+        <div style="font-weight:700;font-size:1.2rem">${MEM_MOVES}</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button onclick="this.closest('[style*=fixed]').remove();openQuiz('${QUIZ_SET?.id}')"
+        style="padding:14px;border-radius:14px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;font-weight:700;font-size:.9rem;border:none;cursor:pointer">
+        🔄 เล่นอีกครั้ง
+      </button>
+      <button onclick="this.closest('[style*=fixed]').remove();memCleanup();renderHome()"
+        style="padding:14px;border-radius:14px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);font-weight:600;font-size:.9rem;border:none;cursor:pointer">
+        🏠 กลับหน้าหลัก
+      </button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+function memSubLB(quizSetId) {
+  if (MEM_LB_CHAN) { sb.removeChannel(MEM_LB_CHAN); MEM_LB_CHAN = null; }
+  MEM_LB_CHAN = sb.channel(`mem-lb:${quizSetId}`)
+    .on('postgres_changes',{event:'*',schema:'public',table:'quiz_leaderboard',filter:`quiz_set_id=eq.${quizSetId}`},
+      async () => {
+        const lb = await getLB(quizSetId, 10);
+        const el = document.getElementById('mem-lb');
+        if (el) el.innerHTML = renderMemLBHtml(lb);
+      })
+    .subscribe();
+}
+
+function memCleanup() {
+  clearInterval(MEM_TIMER);
+  hideMemDesc();
+  if (MEM_LB_CHAN) { sb.removeChannel(MEM_LB_CHAN); MEM_LB_CHAN = null; }
+}
+
+const MEM_MEDALS = ['🥇','🥈','🥉'];
+function renderMemLBHtml(entries) {
+  if (!entries.length) return `<div class="text-center py-6 text-white/40 text-sm">ยังไม่มีผู้เล่น</div>`;
+  return entries.map((e,i) => {
+    const isMe = e.user_id === USER?.userId;
+    const av = e.picture_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(e.display_name)}&background=6366f1&color=fff`;
+    const m = Math.floor(e.time_spent_seconds/60), s = e.time_spent_seconds%60;
+    return `<div class="flex items-center gap-2.5 p-2 rounded-xl border ${isMe?'border-purple-500 bg-purple-500/10':'border-white/8 bg-white/4'}">
+      <div class="w-6 text-center text-sm">${i<3?MEM_MEDALS[i]:`<span class="text-xs text-white/40">#${i+1}</span>`}</div>
+      <img src="${av}" class="w-8 h-8 rounded-full object-cover border ${isMe?'border-purple-400':'border-white/20'}" onerror="this.src='https://ui-avatars.com/api/?name=U&background=6366f1&color=fff'" alt=""/>
+      <div class="flex-1 min-w-0">
+        <p class="text-xs font-semibold truncate ${isMe?'text-purple-200':''}">${esc(e.display_name)}${isMe?' (คุณ)':''}</p>
+      </div>
+      <div class="text-right text-xs">
+        <div class="font-bold ${i===0?'text-yellow-400':''}">${m}:${s.toString().padStart(2,'0')}</div>
+        <div class="text-white/40">${e.score} ครั้ง</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// ADMIN — ตั้งค่าการ์ดเกมความจำ
+// ══════════════════════════════════════════════════════════════
+async function openMemorySettings(quizSetId, title) {
+  showLoader('กำลังโหลดการ์ด...');
+  const existing = await api(`get-memory-cards?quiz_set_id=${quizSetId}`);
+
+  // เตรียม rows (อย่างน้อย 6 แถว)
+  const initRows = existing.length ? existing : Array(6).fill(null).map((_,i)=>({ front_image_url:'', back_image_url:'', description:'', sound_url:'', match_group: String(i) }));
+
+  const renderRows = (rows) => rows.map((r,i) => `
+  <tr id="mrow-${i}">
+    <td class="text-center text-xs text-white/40 pr-2">${i+1}</td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://..." value="${esc(r.front_image_url||'')}"
+      oninput="memRowData[${i}].front_image_url=this.value" style="min-width:120px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://... (ว่าง=ใช้ด้านหน้า)" value="${esc(r.back_image_url||'')}"
+      oninput="memRowData[${i}].back_image_url=this.value" style="min-width:120px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="คำอธิบาย..." value="${esc(r.description||'')}"
+      oninput="memRowData[${i}].description=this.value" style="min-width:100px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://sound.mp3" value="${esc(r.sound_url||'')}"
+      oninput="memRowData[${i}].sound_url=this.value" style="min-width:100px"/></td>
+    <td><button onclick="memDelRow(${i})" class="text-xs px-2 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/40 transition">✕</button></td>
+  </tr>`).join('');
+
+  // global state for rows
+  window.memRowData = initRows.map(r=>({...r}));
+
+  setApp(`
+  <nav class="sticky top-0 z-40 glass border-b border-white/10 px-4 py-3">
+    <div class="flex items-center gap-3 max-w-5xl mx-auto">
+      <button onclick="admQuizSets()" class="p-2 rounded-xl hover:bg-white/10 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="flex-1">
+        <h1 class="font-bold font-kanit text-sm">🧠 ตั้งค่าการ์ด — ${esc(title)}</h1>
+        <p class="text-xs text-white/40">แต่ละแถว = 1 คู่การ์ด (ด้านหน้า + ด้านหลัง)</p>
+      </div>
+      <button onclick="memSaveCards('${quizSetId}')" class="btn-grad px-4 py-2 rounded-xl text-sm font-bold shadow">💾 บันทึก</button>
+    </div>
+  </nav>
+
+  <div class="max-w-5xl mx-auto px-4 py-5">
+    <div class="stat-card overflow-hidden p-0 mb-4">
+      <div class="overflow-x-auto">
+        <table class="tbl" style="min-width:700px">
+          <thead><tr>
+            <th style="width:32px">#</th>
+            <th>ภาพด้านหน้า (URL) <span class="text-white/30 font-normal">*</span></th>
+            <th>ภาพด้านหลัง (URL)</th>
+            <th>คำอธิบายภาพ</th>
+            <th>เสียง effect (URL)</th>
+            <th style="width:40px"></th>
+          </tr></thead>
+          <tbody id="mem-rows">${renderRows(window.memRowData)}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="flex gap-3 mb-5">
+      <button onclick="memAddRow()" class="px-4 py-2 rounded-xl border border-white/20 hover:bg-white/10 transition text-sm text-white/70">
+        + เพิ่มคู่การ์ด
+      </button>
+      <span class="text-xs text-white/40 self-center">รองรับภาพจาก lh3.googleusercontent.com หรือที่อื่นๆ</span>
+    </div>
+
+    <!-- Preview -->
+    <div class="stat-card">
+      <h3 class="font-bold text-sm mb-3">🖼 Preview การ์ด (ด้านหน้า)</h3>
+      <div class="flex flex-wrap gap-3" id="mem-preview">
+        ${window.memRowData.filter(r=>r.front_image_url).map(r=>`
+        <div style="width:80px;height:80px;border-radius:10px;overflow:hidden;background:#1e1b4b;flex-shrink:0">
+          <img src="${esc(r.front_image_url)}" style="width:100%;height:100%;object-fit:cover"
+            onerror="this.parentElement.innerHTML='❌'" crossorigin="anonymous" alt=""/>
+        </div>`).join('') || '<p class="text-white/30 text-xs">ยังไม่มีภาพ</p>'}
+      </div>
+    </div>
+  </div>`);
+}
+
+window.memAddRow = function() {
+  const i = window.memRowData.length;
+  window.memRowData.push({ front_image_url:'', back_image_url:'', description:'', sound_url:'', match_group: String(i) });
+  const tbody = document.getElementById('mem-rows');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.id = `mrow-${i}`;
+  tr.innerHTML = `
+    <td class="text-center text-xs text-white/40 pr-2">${i+1}</td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://..." oninput="memRowData[${i}].front_image_url=this.value" style="min-width:120px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://..." oninput="memRowData[${i}].back_image_url=this.value" style="min-width:120px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="คำอธิบาย..." oninput="memRowData[${i}].description=this.value" style="min-width:100px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://sound.mp3" oninput="memRowData[${i}].sound_url=this.value" style="min-width:100px"/></td>
+    <td><button onclick="memDelRow(${i})" class="text-xs px-2 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/40 transition">✕</button></td>`;
+  tbody.appendChild(tr);
+};
+
+window.memDelRow = function(i) {
+  window.memRowData.splice(i, 1);
+  document.getElementById(`mrow-${i}`)?.remove();
+  // re-number
+  document.querySelectorAll('#mem-rows tr').forEach((tr,idx) => {
+    tr.id = `mrow-${idx}`;
+    const td = tr.querySelector('td:first-child');
+    if (td) td.textContent = idx+1;
+  });
+};
+
+async function memSaveCards(quizSetId) {
+  const cards = window.memRowData.filter(r => r.front_image_url?.trim());
+  if (cards.length < 2) { toast('กรุณาเพิ่มการ์ดอย่างน้อย 2 คู่','warning'); return; }
+  const payload = cards.map((c,i) => ({ ...c, match_group: String(i), order_index: i }));
+  const res = await api('save-memory-cards', { method:'POST', body: JSON.stringify({ quizSetId, cards: payload }) });
+  if (res.ok) { toast(`บันทึก ${res.saved} คู่การ์ดแล้ว`,'success'); admQuizSets(); }
+  else toast('บันทึกไม่สำเร็จ: '+(res.error||''),'error');
+}
+
+// ══════════════════════════════════════════════════════════════
 // MY SCORES — ดูคะแนนของตัวเอง (query จาก user_id โดยตรง)
 // ══════════════════════════════════════════════════════════════
 async function renderMyScores() {
@@ -1212,6 +1625,11 @@ async function admQuizSets() {
             class="text-xs px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/40 transition">
             ⚙ ตั้งค่า
           </button>
+          ${q.quiz_type==='memory'?`
+          <button onclick="openMemorySettings('${q.id}','${esc(q.title)}')"
+            class="text-xs px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/40 transition">
+            🖼 การ์ด
+          </button>`:''}
           <button onclick="togglePub('${q.id}',${q.is_published})"
             class="text-xs px-3 py-1.5 rounded-lg ${q.is_published?'bg-red-500/20 hover:bg-red-500/40':'bg-green-500/20 hover:bg-green-500/40'} transition">
             ${q.is_published?'ซ่อน':'เผยแพร่'}
