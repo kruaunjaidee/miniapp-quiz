@@ -761,34 +761,41 @@ async function finishQuiz() {
   const pct = max>0 ? parseFloat(((total/max)*100).toFixed(2)) : 0;
   const isPassed = pct >= (QUIZ_SET.pass_score??60);
 
-  // ── บันทึก DB เฉพาะเมื่อมี SESSION (จับเวลา) ──
+  // ── บันทึก DB เฉพาะเมื่อมี SESSION (time_limit_seconds > 0) ──
+  // ส่งเฉพาะ summary ที่ใช้ใน Flex Message เท่านั้น ไม่บันทึก quiz_answers
   if (SESSION) {
     try {
-      for(const q of QUESTIONS){
-        const ans=ANSWERS[q.id];
-        if(!ans||ans.drag) continue;
-        await sb.from('quiz_answers').insert({
-          session_id:SESSION.id, question_id:q.id,
-          user_answer:ans.text||ans.choiceId,
-          selected_choice_id:ans.choiceId||null,
-          is_correct:(()=>{ const cc=q.quiz_choices?.find(c=>c.is_correct); if(cc) return ans.choiceId===cc.id; return (ans.text||'').trim().toLowerCase()===(q.correct_answer||'').trim().toLowerCase(); })(),
-          points_earned:(()=>{ const cc=q.quiz_choices?.find(c=>c.is_correct); const ok=cc?ans.choiceId===cc.id:(ans.text||'').trim().toLowerCase()===(q.correct_answer||'').trim().toLowerCase(); return ok?q.points:0; })(),
-        });
-      }
-      await api('complete-session',{
-        method:'POST',
-        body:JSON.stringify({sessionId:SESSION.id,totalScore:total,maxScore:max,timeSpentSeconds:timeSpent,userId:USER.userId,displayName:USER.displayName,pictureUrl:USER.pictureUrl}),
+      await api('complete-session', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId:   SESSION.id,
+          // ── Flex vars ──
+          totalScore:        total,
+          maxScore:          max,
+          percentage:        pct,
+          correctCount:      correct,
+          totalQuestions:    QUESTIONS.length,
+          isPassed:          isPassed,
+          timeSpentSeconds:  timeSpent,
+          // ── user info ──
+          userId:      USER.userId,
+          displayName: USER.displayName,
+          pictureUrl:  USER.pictureUrl,
+          fullName:    STUDENT?.full_name   || USER.displayName,
+          studentNo:   STUDENT?.student_no  || '',
+          className:   STUDENT?.class_name  || '',
+        }),
       });
-    } catch(e){ console.error('save session error:', e); }
+    } catch(e){ console.error('complete-session error:', e); }
   }
 
   if(isPassed) confetti();
 
-  // ── ส่ง Flex Message เสมอ (ทั้งโหมดบันทึกและไม่บันทึก) ──
+  // ── ส่ง Flex เสมอ ──
   await sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSpent });
 
   const m=Math.floor(timeSpent/60), s=timeSpent%60;
-  const isSaved = !!SESSION; // แสดง label ว่าบันทึกแล้วหรือไม่
+  const isSaved = !!SESSION;
 
   setApp(`
   <div class="min-h-screen flex items-center justify-center px-4 py-8">
@@ -817,11 +824,11 @@ async function finishQuiz() {
         </div>
       </div>
       <div class="space-y-3">
-        ${(QUIZ_SET.max_attempts === 0 || !isSaved)
-          ? `<button onclick="openQuiz('${QUIZ_SET.id}')" class="w-full py-4 rounded-2xl border border-white/20 text-white/80 hover:bg-white/10 transition font-semibold text-sm">🔄 ทำอีกครั้ง</button>`
-          : `<div class="glass rounded-2xl border border-white/10 p-3 text-center text-xs text-white/40">แบบทดสอบนี้ทำได้ครั้งเดียว</div>`}
+        ${(QUIZ_SET.max_attempts===0||!isSaved)
+          ?`<button onclick="openQuiz('${QUIZ_SET.id}')" class="w-full py-4 rounded-2xl border border-white/20 text-white/80 hover:bg-white/10 transition font-semibold text-sm">🔄 ทำอีกครั้ง</button>`
+          :`<div class="glass rounded-2xl border border-white/10 p-3 text-center text-xs text-white/40">แบบทดสอบนี้ทำได้ครั้งเดียว</div>`}
         <button onclick="renderHome()" class="w-full py-4 rounded-2xl btn-grad font-bold shadow-lg">🏠 กลับหน้าหลัก</button>
-        ${isSaved ? `<button onclick="renderMyScores()" class="w-full py-4 rounded-2xl border border-purple-500/40 text-purple-300 hover:bg-purple-600/20 transition font-semibold text-sm">📊 ดูสถิติของฉัน</button>` : ''}
+        ${isSaved?`<button onclick="renderMyScores()" class="w-full py-4 rounded-2xl border border-purple-500/40 text-purple-300 hover:bg-purple-600/20 transition font-semibold text-sm">📊 ดูสถิติของฉัน</button>`:''}
       </div>
     </div>
   </div>`);
@@ -1008,41 +1015,78 @@ async function sendScoreFlexMessage({ total, max, pct, correct, isPassed, timeSp
 }
 
 // ══════════════════════════════════════════════════════════════
-// MY SCORES
+// MY SCORES — ดูคะแนนของตัวเอง (query จาก user_id โดยตรง)
 // ══════════════════════════════════════════════════════════════
 async function renderMyScores() {
   showLoader('กำลังโหลดสถิติ...');
-  const { data } = await sb.from('quiz_sessions')
-    .select('*,quiz_sets(title,test_type)').eq('user_id',USER.userId)
-    .eq('status','completed').order('completed_at',{ascending:false});
 
-  const av=USER.pictureUrl||`https://ui-avatars.com/api/?name=${encodeURIComponent(USER.displayName)}&background=6366f1&color=fff`;
+  // ดึงข้อมูลจาก quiz_sessions โดยตรงด้วย user_id
+  const { data, error } = await sb.from('quiz_sessions')
+    .select('id,total_score,max_score,percentage,is_passed,time_spent_seconds,attempt_number,completed_at,correct_count,total_questions,student_full_name,student_no,student_class,quiz_sets(title,test_type)')
+    .eq('user_id', USER.userId)
+    .eq('status', 'completed')
+    .order('completed_at', { ascending: false });
+
+  const av  = USER.pictureUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(USER.displayName)}&background=6366f1&color=fff`;
+  const name = STUDENT?.full_name || USER.displayName;
+  const cls  = STUDENT?.class_name || '';
+  const no   = STUDENT?.student_no || '';
+
   setApp(`
   <nav class="sticky top-0 z-40 glass border-b border-white/10 px-4 py-3">
     <div class="flex items-center gap-3 max-w-lg mx-auto">
-      <button onclick="renderHome()" class="p-2 rounded-xl hover:bg-white/10 transition"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>
+      <button onclick="renderHome()" class="p-2 rounded-xl hover:bg-white/10 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </button>
       <h1 class="font-bold font-kanit">📊 สถิติของฉัน</h1>
     </div>
   </nav>
   <div class="max-w-lg mx-auto px-4 py-6">
+
+    <!-- Profile card -->
     <div class="flex items-center gap-4 glass rounded-2xl p-4 border border-white/10 mb-5">
-      <img src="${av}" class="w-16 h-16 rounded-2xl object-cover border-2 border-purple-500/50" onerror="this.src='https://ui-avatars.com/api/?name=U&background=6366f1&color=fff'" alt=""/>
-      <div><h3 class="font-bold text-lg">${esc(USER.displayName)}</h3><p class="text-white/50 text-sm">ทำแบบทดสอบทั้งหมด ${data?.length||0} ครั้ง</p></div>
+      <img src="${av}" class="w-16 h-16 rounded-2xl object-cover border-2 border-purple-500/50 flex-shrink-0"
+        onerror="this.src='https://ui-avatars.com/api/?name=U&background=6366f1&color=fff'" alt=""/>
+      <div class="flex-1 min-w-0">
+        <h3 class="font-bold text-base truncate">${esc(name)}</h3>
+        ${cls ? `<p class="text-white/50 text-xs">ชั้น ${esc(cls)}${no?' เลขที่ '+esc(no):''}</p>` : ''}
+        <p class="text-white/40 text-xs mt-0.5">ทำแบบทดสอบ ${data?.length||0} ครั้ง</p>
+      </div>
     </div>
+
+    <!-- Score list -->
     <div class="space-y-3">
-      ${!data?.length?`<div class="text-center py-12 text-white/40"><div class="text-4xl mb-3">📝</div><p>ยังไม่เคยทำแบบทดสอบ</p></div>`:
-      data.map(s=>`
-        <div class="glass rounded-2xl border border-white/10 p-4">
-          <div class="flex items-start justify-between mb-2">
-            <div class="flex-1 mr-3"><h4 class="font-semibold text-sm lc2">${esc(s.quiz_sets?.title||'-')}</h4><p class="text-xs text-white/40">${new Date(s.completed_at).toLocaleDateString('th-TH',{dateStyle:'medium'})}</p></div>
-            <div class="text-right"><div class="font-bold text-lg ${s.is_passed?'text-green-400':'text-red-400'}">${Number(s.percentage).toFixed(0)}%</div><div class="text-xs text-white/40">${s.total_score}/${s.max_score}</div></div>
-          </div>
-          <div class="flex gap-2">
-            <span class="badge ${s.is_passed?'bg-green':'bg-red'}">${s.is_passed?'✓ ผ่าน':'✗ ไม่ผ่าน'}</span>
-            <span class="badge" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.5)">ครั้งที่ ${s.attempt_number}</span>
-            <span class="badge" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.5)">${TBADGE[s.quiz_sets?.test_type]?.[0]||'-'}</span>
-          </div>
-        </div>`).join('')}
+      ${!data?.length
+        ? `<div class="text-center py-12 text-white/40"><div class="text-4xl mb-3">📝</div><p>ยังไม่มีผลการสอบที่บันทึก</p><p class="text-xs mt-1">เฉพาะ posttest เท่านั้นที่บันทึกผล</p></div>`
+        : data.map(s => {
+            const mm = Math.floor((s.time_spent_seconds||0)/60);
+            const ss = (s.time_spent_seconds||0) % 60;
+            return `
+            <div class="glass rounded-2xl border border-white/10 p-4">
+              <div class="flex items-start justify-between mb-3">
+                <div class="flex-1 mr-3">
+                  <h4 class="font-semibold text-sm lc2">${esc(s.quiz_sets?.title||'-')}</h4>
+                  <p class="text-xs text-white/40 mt-0.5">${new Date(s.completed_at).toLocaleDateString('th-TH',{dateStyle:'medium'})}</p>
+                </div>
+                <div class="text-right flex-shrink-0">
+                  <div class="font-bold text-xl ${s.is_passed?'text-green-400':'text-red-400'}">${Number(s.percentage).toFixed(0)}%</div>
+                  <div class="text-xs text-white/40">${s.total_score}/${s.max_score} คะแนน</div>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-2 text-xs">
+                <span class="badge ${s.is_passed?'bg-green':'bg-red'}">${s.is_passed?'✓ ผ่าน':'✗ ไม่ผ่าน'}</span>
+                <span class="badge" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.5)">
+                  ${TBADGE[s.quiz_sets?.test_type]?.[0]||'-'}
+                </span>
+                ${s.correct_count != null
+                  ? `<span class="badge" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.5)">ถูก ${s.correct_count}${s.total_questions?'/'+s.total_questions:''} ข้อ</span>`
+                  : ''}
+                <span class="badge" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.5)">
+                  ⏱ ${mm}:${ss.toString().padStart(2,'0')}
+                </span>
+              </div>
+            </div>`;
+          }).join('')}
     </div>
   </div>`);
 }
