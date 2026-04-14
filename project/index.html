@@ -1174,7 +1174,7 @@ async function admDash() {
     <div class="stat-card">
       <h3 class="font-bold text-sm mb-4 text-white/80">⚡ ทำรายการ</h3>
       <div class="space-y-3">
-        ${[['adm(\'quiz-sets\')','📝','เพิ่มชุดแบบทดสอบ','สร้างข้อสอบใหม่'],["adm('import')",'📤','Import CSV','นำเข้าข้อสอบจากไฟล์'],['exportAll()','📊','Export รายงาน','ดาวน์โหลด CSV ทั้งหมด']].map(([fn,ic,t,s])=>`
+        ${[["adm('import')",'📤','Import CSV','นำเข้าข้อสอบจากไฟล์'],['exportAll()','📊','Export รายงาน','ดาวน์โหลด CSV ทั้งหมด']].map(([fn,ic,t,s])=>`
         <button onclick="${fn}" class="w-full text-left flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-purple-600/20 border border-transparent hover:border-purple-500/50 transition-all text-sm">
           <span class="text-xl">${ic}</span><div><div class="font-semibold">${t}</div><div class="text-xs text-white/40">${s}</div></div></button>`).join('')}
       </div>
@@ -1184,7 +1184,7 @@ async function admDash() {
 
 async function admQuizSets() {
   const c=document.getElementById('adm-content');
-  c.innerHTML=`<div class="flex justify-end mb-4"><button onclick="showCreateQuiz()" class="btn-grad px-5 py-2.5 rounded-xl font-semibold text-sm shadow-lg">+ เพิ่มชุดแบบทดสอบ</button></div><div class="stat-card overflow-hidden p-0">${skeletons(3)}</div>`;
+  c.innerHTML=`<div class="stat-card overflow-hidden p-0">${skeletons(3)}</div>`;
   const {data}=await sb.from('quiz_sets').select('*,quiz_units(title)').order('created_at',{ascending:false});
   document.querySelector('#adm-content .stat-card').innerHTML=`<div class="overflow-x-auto"><table class="tbl">
     <thead><tr>
@@ -1622,84 +1622,8 @@ async function changeRole(uid,role){
   await sb.from('quiz_users').update({role}).eq('userId',uid);
   toast('อัปเดตสำเร็จ','success');
 }
-function showCreateQuiz(){ toast('ใช้ Import CSV เพื่อเพิ่มข้อสอบ หรือเพิ่มผ่าน Supabase Table Editor','info',5000); }
 function exportReport(qid){ window.open(`${API_BASE}/export-report?quiz_set_id=${qid}`,'_blank'); }
 function exportAll(){ window.open(`${API_BASE}/export-report`,'_blank'); }
-
-// ══════════════════════════════════════════════════════════════
-// WHEEL SPIN MODAL
-// ══════════════════════════════════════════════════════════════
-async function openWheel(quizSetId) {
-  const lb=await getLB(quizSetId,50);
-  const parts=lb.length?lb.map(e=>({name:e.display_name,pic:e.picture_url})):
-    [{name:'ตัวอย่าง A'},{name:'ตัวอย่าง B'},{name:'ตัวอย่าง C'},{name:'ตัวอย่าง D'}];
-
-  document.body.insertAdjacentHTML('beforeend',`
-  <div class="modal-bg" id="wheel-modal">
-    <div class="modal-sheet max-w-sm w-full">
-      <div class="modal-head"><h3 class="font-bold font-kanit">🎡 วงล้อสุ่มรายชื่อ</h3><button onclick="document.getElementById('wheel-modal').remove()" class="text-white/40 hover:text-white text-xl">✕</button></div>
-      <div class="p-5 flex flex-col items-center">
-        <div class="relative mb-4"><canvas id="wc" width="300" height="300" class="block rounded-full" style="box-shadow:0 0 32px rgba(124,58,237,.5)"></canvas></div>
-        <div id="winner-box" class="hidden mb-4 text-center anim-bounce glass rounded-2xl border border-yellow-500/30 p-4 w-full">
-          <p class="text-white/60 text-sm mb-1">ผู้ถูกสุ่ม 🎉</p>
-          <p id="winner-name" class="text-2xl font-bold font-kanit text-yellow-300"></p>
-        </div>
-        <button id="spin-btn" onclick="doSpin()" class="w-full py-4 rounded-2xl btn-grad font-bold text-lg shadow-xl mb-3">🎡 หมุน!</button>
-        <p class="text-xs text-white/40">ผู้เข้าร่วม ${parts.length} คน</p>
-      </div>
-    </div>
-  </div>`);
-
-  // Init wheel canvas
-  const cv=document.getElementById('wc'), ctx=cv.getContext('2d');
-  const cx=150,cy=150,R=138;
-  const COLS=['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9'];
-  const seg=(2*Math.PI)/parts.length;
-  let angle=0,speed=0,spinning=false;
-
-  function draw(a){
-    ctx.clearRect(0,0,300,300);
-    parts.forEach((p,i)=>{
-      ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,R,a+i*seg,a+(i+1)*seg);ctx.closePath();
-      ctx.fillStyle=COLS[i%COLS.length];ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
-      ctx.save();ctx.translate(cx,cy);ctx.rotate(a+i*seg+seg/2);ctx.textAlign='right';ctx.fillStyle='#1a1a2e';
-      ctx.font=`bold ${Math.max(10,14-parts.length*.3)}px Sarabun,sans-serif`;
-      ctx.fillText(p.name.length>10?p.name.slice(0,10)+'…':p.name,R-10,5);ctx.restore();
-    });
-    ctx.beginPath();ctx.arc(cx,cy,18,0,Math.PI*2);ctx.fillStyle='#1a1a2e';ctx.fill();
-    ctx.beginPath();ctx.moveTo(cx+R+8,cy);ctx.lineTo(cx+R-8,cy-12);ctx.lineTo(cx+R-8,cy+12);ctx.closePath();ctx.fillStyle='#FF6B6B';ctx.fill();
-  }
-  draw(0);
-  window._wheelDraw=draw;
-  window._wheelState={angle,speed,spinning,parts,seg,cv,ctx};
-
-  window.doSpin=function(){
-    const ws=window._wheelState;
-    if(ws.spinning)return;
-    ws.spinning=true;ws.speed=.2+Math.random()*.3;
-    document.getElementById('spin-btn').disabled=true;
-    document.getElementById('spin-btn').textContent='🌀 กำลังหมุน...';
-    document.getElementById('winner-box')?.classList.add('hidden');
-    (function frame(){
-      ws.angle+=ws.speed;ws.speed*=.985;
-      window._wheelDraw(ws.angle);
-      if(ws.speed<.002){
-        ws.spinning=false;
-        const norm=(((-ws.angle)%(2*Math.PI))+(2*Math.PI))%(2*Math.PI);
-        const wi=Math.floor(norm/ws.seg)%ws.parts.length;
-        const winner=ws.parts[wi];
-        document.getElementById('winner-name').textContent=winner.name;
-        document.getElementById('winner-box').classList.remove('hidden');
-        confetti(2500);
-        toast(`🎉 ได้รับเลือก: ${winner.name}`,'success',5000);
-        document.getElementById('spin-btn').disabled=false;
-        document.getElementById('spin-btn').textContent='🎡 หมุนอีกครั้ง';
-        return;
-      }
-      requestAnimationFrame(frame);
-    })();
-  };
-}
 
 // ══════════════════════════════════════════════════════════════
 // START
