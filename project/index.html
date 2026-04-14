@@ -421,7 +421,7 @@ function filterQuiz(type) {
   renderQuizCards(type==='all' ? ALL_QUIZ : ALL_QUIZ.filter(q=>q.test_type===type));
 }
 
-const QICON={multiple_choice:'📝',fill_blank:'✏️',drag_drop:'🎯',wheel_spin:'🎡',true_false:'✅',memory:'🧠'};
+const QICON={multiple_choice:'📝',fill_blank:'✏️',drag_drop:'🎯',wheel_spin:'🎡',true_false:'✅',memory:'🧠',match:'🃏'};
 const TBADGE={pretest:['ก่อนเรียน','bg-blue'],posttest:['หลังเรียน','bg-green'],practice:['ฝึกหัด','bg-amber']};
 
 function renderQuizCards(list) {
@@ -481,6 +481,8 @@ async function openQuiz(id) {
 
     // ── Memory game → เปิดหน้าเกม ──
     if (q.quiz_type === 'memory') { openMemoryGame(q); return; }
+    // ── Match game → เปิดหน้าเกมจับคู่ ──
+    if (q.quiz_type === 'match')  { openMatchGame(q);  return; }
 
     const lb = await getLB(id);
 
@@ -1428,6 +1430,284 @@ async function memSaveCards(quizSetId) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// MATCH GAME — เกมจับคู่ (ลากหรือแตะเชื่อมภาพซ้าย-ขวา)
+// ══════════════════════════════════════════════════════════════
+let MATCH_CARDS=[], MATCH_PAIRS=[], MATCH_SEL=null;
+let MATCH_DONE=new Set(), MATCH_START=0, MATCH_TIMER=null;
+let MATCH_MOVES=0, MATCH_LB_CHAN=null;
+
+async function openMatchGame(quizSet) {
+  showLoader('กำลังโหลดเกมจับคู่...');
+  const cards = await api(`get-memory-cards?quiz_set_id=${quizSet.id}`);
+  if (!cards || !cards.length) {
+    toast('ยังไม่มีการ์ดในเกมนี้','warning'); renderHome(); return;
+  }
+  // จำกัดจำนวนคู่ตามหน้าจอ
+  const vw = window.innerWidth;
+  const maxPairs = vw < 400 ? 4 : vw < 600 ? 5 : vw < 900 ? 6 : 8;
+  const used = cards.slice(0, maxPairs);
+
+  // สร้าง left (front) และ right (back/front) แล้ว shuffle แต่ละฝั่งแยกกัน
+  MATCH_PAIRS = used;
+  const lefts  = shuffle(used.map((c,i) => ({ ...c, side:'left',  uid:`l${i}`, pairIdx: i })));
+  const rights = shuffle(used.map((c,i) => ({ ...c, side:'right', uid:`r${i}`, pairIdx: i })));
+  MATCH_CARDS = { lefts, rights };
+  MATCH_SEL = null; MATCH_DONE = new Set(); MATCH_MOVES = 0;
+  MATCH_START = Date.now();
+
+  const lb = await getLB(quizSet.id, 10);
+  renderMatchBoard(quizSet, lb);
+  matchSubLB(quizSet.id);
+}
+
+function renderMatchBoard(quizSet, lb=[]) {
+  setApp(`
+  <nav class="sticky top-0 z-40 glass border-b border-white/10 px-4 py-3">
+    <div class="flex items-center gap-3 max-w-2xl mx-auto">
+      <button onclick="matchCleanup();renderHome()" class="p-2 rounded-xl hover:bg-white/10 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </button>
+      <h1 class="font-bold font-kanit text-sm flex-1 truncate">🃏 ${esc(quizSet.title)}</h1>
+      <div class="flex items-center gap-3 text-xs text-white/60">
+        <span id="match-moves">0 ครั้ง</span>
+        <span id="match-time" class="font-mono font-bold text-white">0:00</span>
+      </div>
+    </div>
+  </nav>
+  <div class="max-w-2xl mx-auto px-3 py-4">
+    <p class="text-center text-xs text-white/40 mb-3">แตะภาพซ้ายแล้วแตะภาพขวาที่คู่กัน</p>
+    <div id="match-grid" class="grid gap-3" style="grid-template-columns:1fr 1fr"></div>
+    <!-- Leaderboard -->
+    <div class="mt-5 glass rounded-2xl border border-white/10 overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2.5 border-b border-white/10">
+        <h3 class="font-bold text-sm font-kanit">🏆 อันดับเร็วสุด</h3>
+        <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div><span class="text-xs text-white/40">Live</span></div>
+      </div>
+      <div id="match-lb" class="p-3 space-y-1.5 max-h-48 overflow-y-auto">${renderMemLBHtml(lb)}</div>
+    </div>
+  </div>`);
+
+  renderMatchGrid();
+  matchStartTimer();
+}
+
+function renderMatchGrid() {
+  const grid = document.getElementById('match-grid');
+  if (!grid) return;
+  const { lefts, rights } = MATCH_CARDS;
+  const n = lefts.length;
+
+  // สร้างแถว n แถว x 2 คอลัมน์ (ซ้าย | ขวา)
+  grid.innerHTML = Array.from({length:n}, (_,i) => {
+    const L = lefts[i], R = rights[i];
+    return `
+    <div class="flex gap-3">
+      ${matchCardHTML(L)}
+      ${matchCardHTML(R)}
+    </div>`;
+  }).join('');
+}
+
+function matchCardHTML(c) {
+  const isDone = MATCH_DONE.has(c.pairIdx);
+  const imgUrl = c.side === 'left'
+    ? c.front_image_url
+    : (c.back_image_url || c.front_image_url);
+  return `
+  <div id="mc-${c.uid}" onclick="matchTap('${c.uid}','${c.pairIdx}','${c.side}')"
+    class="match-card flex-1 rounded-2xl overflow-hidden cursor-pointer transition-all duration-200"
+    style="aspect-ratio:1;border:2px solid ${isDone?'transparent':'rgba(255,255,255,0.12)'};
+      opacity:${isDone?'0.25':'1'};pointer-events:${isDone?'none':'auto'};
+      background:#0f0f1a;position:relative;">
+    <img src="${esc(imgUrl)}" style="width:100%;height:100%;object-fit:cover;display:block"
+      onerror="this.parentElement.style.background='#1e1b4b';this.style.display='none'"
+      crossorigin="anonymous" alt=""/>
+    ${c.description && c.side==='left' ? `
+    <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.7));
+      padding:6px 8px;font-size:10px;color:#fff;line-height:1.2">${esc(c.description)}</div>` : ''}
+  </div>`;
+}
+
+function matchTap(uid, pairIdxStr, side) {
+  const pairIdx = parseInt(pairIdxStr);
+  if (MATCH_DONE.has(pairIdx)) return;
+
+  const el = document.getElementById(`mc-${uid}`);
+
+  if (!MATCH_SEL) {
+    // ── เลือกใบแรก ──
+    MATCH_SEL = { uid, pairIdx, side };
+    if (el) {
+      el.style.border = '2px solid #7c3aed';
+      el.style.transform = 'scale(1.05)';
+      el.style.boxShadow = '0 0 16px rgba(124,58,237,.6)';
+    }
+    return;
+  }
+
+  // ── กดซ้ำใบเดิม → ยกเลิก ──
+  if (MATCH_SEL.uid === uid) {
+    matchDeselect(MATCH_SEL.uid);
+    MATCH_SEL = null;
+    return;
+  }
+
+  // ── กดฝั่งเดียวกัน → สลับ selection ──
+  if (MATCH_SEL.side === side) {
+    matchDeselect(MATCH_SEL.uid);
+    MATCH_SEL = { uid, pairIdx, side };
+    if (el) {
+      el.style.border = '2px solid #7c3aed';
+      el.style.transform = 'scale(1.05)';
+      el.style.boxShadow = '0 0 16px rgba(124,58,237,.6)';
+    }
+    return;
+  }
+
+  // ── เลือกใบที่สอง (ต่างฝั่ง) → ตรวจ ──
+  MATCH_MOVES++;
+  const movEl = document.getElementById('match-moves');
+  if (movEl) movEl.textContent = `${MATCH_MOVES} ครั้ง`;
+
+  if (MATCH_SEL.pairIdx === pairIdx) {
+    // ✅ จับคู่ถูก
+    matchDeselect(MATCH_SEL.uid);
+    playMemSound(MATCH_PAIRS[pairIdx]?.sound_url || null);
+    MATCH_DONE.add(pairIdx);
+
+    // flash สีเขียวแล้วจาง
+    [MATCH_SEL.uid, uid].forEach(id => {
+      const e = document.getElementById(`mc-${id}`);
+      if (e) {
+        e.style.border = '2px solid #22c55e';
+        e.style.transform = 'scale(1.05)';
+        e.style.boxShadow = '0 0 20px rgba(34,197,94,.5)';
+        setTimeout(() => {
+          e.style.opacity = '0.2';
+          e.style.pointerEvents = 'none';
+          e.style.transform = '';
+          e.style.boxShadow = '';
+        }, 500);
+      }
+    });
+    MATCH_SEL = null;
+
+    // เสร็จแล้ว?
+    if (MATCH_DONE.size === MATCH_PAIRS.length) {
+      setTimeout(matchFinish, 700);
+    }
+  } else {
+    // ❌ ไม่ตรง — flash แดงแล้วรีเซ็ต
+    [MATCH_SEL.uid, uid].forEach(id => {
+      const e = document.getElementById(`mc-${id}`);
+      if (e) {
+        e.style.border = '2px solid #ef4444';
+        e.style.boxShadow = '0 0 16px rgba(239,68,68,.4)';
+      }
+    });
+    const prevSel = MATCH_SEL;
+    MATCH_SEL = null;
+    setTimeout(() => {
+      matchDeselect(prevSel.uid);
+      matchDeselect(uid);
+    }, 700);
+  }
+}
+
+function matchDeselect(uid) {
+  const e = document.getElementById(`mc-${uid}`);
+  if (e) {
+    e.style.border = '2px solid rgba(255,255,255,0.12)';
+    e.style.transform = '';
+    e.style.boxShadow = '';
+  }
+}
+
+function matchStartTimer() {
+  clearInterval(MATCH_TIMER);
+  MATCH_TIMER = setInterval(() => {
+    const el = document.getElementById('match-time');
+    if (!el) { clearInterval(MATCH_TIMER); return; }
+    const s = Math.floor((Date.now()-MATCH_START)/1000);
+    el.textContent = `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+  }, 500);
+}
+
+async function matchFinish() {
+  clearInterval(MATCH_TIMER);
+  const timeSpent = Math.floor((Date.now()-MATCH_START)/1000);
+  const m = Math.floor(timeSpent/60), s = timeSpent%60;
+  confetti();
+
+  // บันทึก leaderboard
+  if (QUIZ_SET && USER) {
+    const { data: existing } = await sb.from('quiz_leaderboard')
+      .select('time_spent_seconds').eq('user_id',USER.userId).eq('quiz_set_id',QUIZ_SET.id).maybeSingle();
+    const isBetter = !existing || timeSpent < existing.time_spent_seconds;
+    if (isBetter) {
+      await sb.from('quiz_leaderboard').upsert({
+        user_id: USER.userId, quiz_set_id: QUIZ_SET.id, session_id: null,
+        display_name: STUDENT?.full_name || USER.displayName,
+        picture_url: USER.pictureUrl || null,
+        score: MATCH_MOVES,
+        percentage: 100,
+        time_spent_seconds: timeSpent,
+        achieved_at: new Date().toISOString(),
+      }, { onConflict: 'user_id,quiz_set_id' });
+    }
+  }
+
+  toast(`🎉 จับคู่ครบ! ${m}:${s.toString().padStart(2,'0')} | ${MATCH_MOVES} ครั้ง`, 'success', 5000);
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px;';
+  modal.innerHTML = `
+  <div style="background:#12121e;border:1px solid rgba(124,58,237,.3);border-radius:24px;padding:28px;max-width:300px;width:100%;text-align:center;animation:bounceIn .5s ease">
+    <div style="font-size:3.5rem;margin-bottom:10px">🎉</div>
+    <h2 style="font-family:'Kanit',sans-serif;font-size:1.3rem;font-weight:700;color:#a78bfa;margin-bottom:4px">จับคู่ครบแล้ว!</h2>
+    <p style="color:rgba(255,255,255,.5);font-size:.8rem;margin-bottom:18px">${esc(QUIZ_SET?.title||'')}</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px">
+      <div style="background:rgba(255,255,255,.06);border-radius:10px;padding:12px">
+        <div style="color:rgba(255,255,255,.4);font-size:.65rem">เวลา</div>
+        <div style="font-weight:700;font-size:1.1rem">${m}:${s.toString().padStart(2,'0')}</div>
+      </div>
+      <div style="background:rgba(255,255,255,.06);border-radius:10px;padding:12px">
+        <div style="color:rgba(255,255,255,.4);font-size:.65rem">จำนวนครั้ง</div>
+        <div style="font-weight:700;font-size:1.1rem">${MATCH_MOVES}</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button onclick="this.closest('[style*=fixed]').remove();openQuiz('${QUIZ_SET?.id}')"
+        style="padding:13px;border-radius:14px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;font-weight:700;font-size:.9rem;border:none;cursor:pointer">
+        🔄 เล่นอีกครั้ง
+      </button>
+      <button onclick="this.closest('[style*=fixed]').remove();matchCleanup();renderHome()"
+        style="padding:13px;border-radius:14px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.8);font-weight:600;font-size:.9rem;border:none;cursor:pointer">
+        🏠 กลับหน้าหลัก
+      </button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+function matchSubLB(quizSetId) {
+  if (MATCH_LB_CHAN) { sb.removeChannel(MATCH_LB_CHAN); MATCH_LB_CHAN = null; }
+  MATCH_LB_CHAN = sb.channel(`match-lb:${quizSetId}`)
+    .on('postgres_changes',{event:'*',schema:'public',table:'quiz_leaderboard',filter:`quiz_set_id=eq.${quizSetId}`},
+      async () => {
+        const lb = await getLB(quizSetId, 10);
+        const el = document.getElementById('match-lb');
+        if (el) el.innerHTML = renderMemLBHtml(lb);
+      })
+    .subscribe();
+}
+
+function matchCleanup() {
+  clearInterval(MATCH_TIMER);
+  if (MATCH_LB_CHAN) { sb.removeChannel(MATCH_LB_CHAN); MATCH_LB_CHAN = null; }
+}
+
+// ══════════════════════════════════════════════════════════════
 // MY SCORES — ดูคะแนนของตัวเอง (query จาก user_id โดยตรง)
 // ══════════════════════════════════════════════════════════════
 async function renderMyScores() {
@@ -1641,6 +1921,11 @@ async function admQuizSets() {
           <button onclick="openMemorySettings('${q.id}','${esc(q.title)}')"
             class="text-xs px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/40 transition">
             🖼 การ์ด
+          </button>`:''}
+          ${q.quiz_type==='match'?`
+          <button onclick="openMemorySettings('${q.id}','${esc(q.title)}')"
+            class="text-xs px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/40 transition">
+            🃏 การ์ด
           </button>`:''}
           <button onclick="togglePub('${q.id}',${q.is_published})"
             class="text-xs px-3 py-1.5 rounded-lg ${q.is_published?'bg-red-500/20 hover:bg-red-500/40':'bg-green-500/20 hover:bg-green-500/40'} transition">
