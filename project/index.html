@@ -1511,7 +1511,7 @@ function renderAdmin() {
   if(!IS_ADMIN){toast('ไม่มีสิทธิ์ Admin','error');return;}
   setApp(`
   <div class="flex min-h-screen">
-    <!-- Sidebar -->
+    <!-- Sidebar (desktop) -->
     <aside class="w-56 bg-black/60 backdrop-blur-xl border-r border-white/8 flex flex-col py-6 px-3 flex-shrink-0 hidden md:flex">
       <div class="px-3 mb-8">
         <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center mb-3">📚</div>
@@ -1522,21 +1522,33 @@ function renderAdmin() {
         ${[['dashboard','🏠','Dashboard'],['quiz-sets','📝','ชุดแบบทดสอบ'],['students','👥','นักเรียน'],['reports','📊','รายงาน'],['import','📤','Import CSV']].map(([v,ic,lb])=>
           `<button onclick="adm('${v}')" id="an-${v}" class="adm-nav ${v==='dashboard'?'active':''} w-full text-left">${ic} ${lb}</button>`).join('')}
       </nav>
-      <div class="px-3 pt-4 border-t border-white/10">
-        <div class="flex items-center gap-3 mb-3">
-          <img src="${USER.pictureUrl||`https://ui-avatars.com/api/?name=${encodeURIComponent(USER.displayName)}&background=6366f1&color=fff`}" class="w-8 h-8 rounded-full object-cover" alt=""/>
+      <div class="px-3 pt-4 border-t border-white/10 space-y-2">
+        <div class="flex items-center gap-3">
+          <img src="${USER.pictureUrl||`https://ui-avatars.com/api/?name=${encodeURIComponent(USER.displayName)}&background=6366f1&color=fff`}" class="w-8 h-8 rounded-full object-cover flex-shrink-0" alt=""/>
           <p class="text-xs font-semibold truncate">${esc(USER.displayName)}</p>
         </div>
-        <button onclick="renderHome()" class="text-xs text-white/40 hover:text-white transition">← กลับหน้าบ้าน</button>
+        <button onclick="renderHome()"
+          class="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition"
+          style="background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.25)">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          กลับหน้าหลัก
+        </button>
       </div>
     </aside>
     <!-- Main -->
     <div class="flex-1 flex flex-col min-h-screen">
-      <header class="sticky top-0 z-30 glass border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <h1 class="font-bold text-lg font-kanit" id="adm-title">Dashboard</h1>
-        <div class="flex gap-2 md:hidden">
+      <header class="sticky top-0 z-30 glass border-b border-white/10 px-4 py-3 flex items-center justify-between gap-3">
+        <h1 class="font-bold text-base font-kanit flex-1" id="adm-title">Dashboard</h1>
+        <!-- Mobile: เมนูและปุ่มกลับ -->
+        <div class="flex items-center gap-1 md:hidden">
           ${[['dashboard','🏠'],['quiz-sets','📝'],['students','👥'],['reports','📊'],['import','📤']].map(([v,ic])=>
             `<button onclick="adm('${v}')" class="p-2 rounded-xl hover:bg-white/10 transition text-sm">${ic}</button>`).join('')}
+          <button onclick="renderHome()"
+            class="ml-1 flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition flex-shrink-0"
+            style="background:rgba(124,58,237,.2);color:#c4b5fd;border:1px solid rgba(124,58,237,.3)">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+            หน้าหลัก
+          </button>
         </div>
       </header>
       <div id="adm-content" class="flex-1 p-6"></div>
