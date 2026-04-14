@@ -1187,17 +1187,177 @@ async function admQuizSets() {
   c.innerHTML=`<div class="flex justify-end mb-4"><button onclick="showCreateQuiz()" class="btn-grad px-5 py-2.5 rounded-xl font-semibold text-sm shadow-lg">+ เพิ่มชุดแบบทดสอบ</button></div><div class="stat-card overflow-hidden p-0">${skeletons(3)}</div>`;
   const {data}=await sb.from('quiz_sets').select('*,quiz_units(title)').order('created_at',{ascending:false});
   document.querySelector('#adm-content .stat-card').innerHTML=`<div class="overflow-x-auto"><table class="tbl">
-    <thead><tr><th>ชื่อชุดข้อสอบ</th><th>ประเภท</th><th>รูปแบบ</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
-    <tbody>${(data||[]).map(q=>`<tr>
-      <td><div class="font-semibold text-sm">${esc(q.title)}</div><div class="text-xs text-white/40">${esc(q.description||'')}</div></td>
+    <thead><tr>
+      <th>ชื่อชุดข้อสอบ</th><th>ประเภท</th><th>รูปแบบ</th>
+      <th>เวลา</th><th>ครั้ง</th><th>ตัวเลือก</th><th>สถานะ</th><th>จัดการ</th>
+    </tr></thead>
+    <tbody>${(data||[]).map(q=>`<tr id="qrow-${q.id}">
+      <td>
+        <div class="font-semibold text-sm">${esc(q.title)}</div>
+        <div class="text-xs text-white/40">${esc(q.description||'')}</div>
+      </td>
       <td><span class="badge ${q.test_type==='pretest'?'bg-blue':q.test_type==='posttest'?'bg-green':'bg-amber'}">${TBADGE[q.test_type]?.[0]||'-'}</span></td>
       <td class="text-xs text-white/50">${q.quiz_type}</td>
+      <td class="text-xs text-white/70">${q.time_limit_seconds>0?`${q.time_limit_seconds/60} นาที`:'ไม่จำกัด'}</td>
+      <td class="text-xs text-white/70">${q.max_attempts===0?'ไม่จำกัด':`${q.max_attempts} ครั้ง`}</td>
+      <td class="text-xs text-white/50">
+        ${q.shuffle_questions?'<span title="สุ่มข้อ" class="mr-1">🔀</span>':''}
+        ${q.shuffle_choices?'<span title="สุ่มตัวเลือก" class="mr-1">🔀ก</span>':''}
+        ${q.show_answer_after?'<span title="แสดงเฉลย">✅</span>':''}
+      </td>
       <td><span class="badge ${q.is_published?'bg-green':'bg-red'}">${q.is_published?'✓ เผยแพร่':'○ Draft'}</span></td>
-      <td><div class="flex gap-2 flex-wrap">
-        <button onclick="togglePub('${q.id}',${q.is_published})" class="text-xs px-3 py-1.5 rounded-lg ${q.is_published?'bg-red-500/20 hover:bg-red-500/40':'bg-green-500/20 hover:bg-green-500/40'} transition">${q.is_published?'ซ่อน':'เผยแพร่'}</button>
-        <button onclick="exportReport('${q.id}')" class="text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/40 transition">Export</button>
-      </div></td></tr>`).join('')}
+      <td>
+        <div class="flex gap-1.5 flex-wrap">
+          <button onclick="openQuizSettings('${q.id}')"
+            class="text-xs px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/40 transition">
+            ⚙ ตั้งค่า
+          </button>
+          <button onclick="togglePub('${q.id}',${q.is_published})"
+            class="text-xs px-3 py-1.5 rounded-lg ${q.is_published?'bg-red-500/20 hover:bg-red-500/40':'bg-green-500/20 hover:bg-green-500/40'} transition">
+            ${q.is_published?'ซ่อน':'เผยแพร่'}
+          </button>
+          <button onclick="exportReport('${q.id}')"
+            class="text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/40 transition">
+            Export
+          </button>
+        </div>
+      </td>
+    </tr>`).join('')}
     </tbody></table></div>`;
+}
+
+// ── Modal ตั้งค่าชุดแบบทดสอบ ──────────────────────────────────
+async function openQuizSettings(id) {
+  const { data: q } = await sb.from('quiz_sets')
+    .select('id,title,time_limit_seconds,max_attempts,shuffle_questions,shuffle_choices,show_answer_after')
+    .eq('id', id).single();
+  if (!q) { toast('โหลดข้อมูลไม่สำเร็จ','error'); return; }
+
+  document.getElementById('qs-modal')?.remove();
+
+  // แปลง seconds → minutes เพื่อแสดงในฟอร์ม
+  const timeMins = q.time_limit_seconds > 0 ? q.time_limit_seconds / 60 : 0;
+
+  document.body.insertAdjacentHTML('beforeend', `
+  <div id="qs-modal" class="fixed inset-0 z-[200] flex items-center justify-center p-4"
+    style="background:rgba(0,0,0,0.75);backdrop-filter:blur(8px)"
+    onclick="if(event.target===this)this.remove()">
+    <div class="max-w-sm w-full rounded-3xl overflow-hidden shadow-2xl anim-slide"
+      style="background:#12121e;border:1px solid rgba(124,58,237,0.3)">
+
+      <!-- Header -->
+      <div class="px-6 pt-5 pb-4 flex items-center justify-between border-b border-white/10">
+        <div>
+          <h3 class="font-bold font-kanit text-base">⚙ ตั้งค่าชุดแบบทดสอบ</h3>
+          <p class="text-xs text-white/40 mt-0.5 truncate max-w-[220px]">${esc(q.title)}</p>
+        </div>
+        <button onclick="document.getElementById('qs-modal').remove()"
+          class="text-white/40 hover:text-white text-xl w-8 h-8 flex items-center justify-center">✕</button>
+      </div>
+
+      <!-- Form -->
+      <div class="px-6 py-5 space-y-5">
+
+        <!-- time_limit_seconds -->
+        <div>
+          <label class="text-xs font-semibold text-white/60 block mb-1.5">
+            ⏱ จำกัดเวลา (นาที)
+            <span class="font-normal text-white/30 ml-1">0 = ไม่จำกัด / ไม่บันทึก DB</span>
+          </label>
+          <input id="qs-time" type="number" min="0" max="180" step="5"
+            value="${timeMins}"
+            class="form-inp"
+            placeholder="0 = ไม่จำกัดเวลา"/>
+        </div>
+
+        <!-- max_attempts -->
+        <div>
+          <label class="text-xs font-semibold text-white/60 block mb-1.5">
+            🔁 จำนวนครั้งที่ทำได้
+            <span class="font-normal text-white/30 ml-1">0 = ไม่จำกัด</span>
+          </label>
+          <select id="qs-attempts" class="form-inp">
+            <option value="0"  ${q.max_attempts===0?'selected':''}>ไม่จำกัด</option>
+            <option value="1"  ${q.max_attempts===1?'selected':''}>1 ครั้ง (ทำได้ครั้งเดียว)</option>
+            <option value="2"  ${q.max_attempts===2?'selected':''}>2 ครั้ง</option>
+            <option value="3"  ${q.max_attempts===3?'selected':''}>3 ครั้ง</option>
+            <option value="5"  ${q.max_attempts===5?'selected':''}>5 ครั้ง</option>
+          </select>
+        </div>
+
+        <!-- toggles -->
+        <div class="space-y-3">
+          <label class="text-xs font-semibold text-white/60 block mb-1">การแสดงผล</label>
+
+          ${[
+            ['qs-shuffle-q', 'shuffle_questions', q.shuffle_questions, '🔀 สุ่มลำดับข้อคำถาม'],
+            ['qs-shuffle-c', 'shuffle_choices',   q.shuffle_choices,   '🔀 สุ่มลำดับตัวเลือก'],
+            ['qs-showanswer','show_answer_after',  q.show_answer_after, '✅ แสดงเฉลยหลังตอบทุกข้อ'],
+          ].map(([id, field, val, label]) => `
+          <label class="flex items-center justify-between cursor-pointer py-2.5 px-3 rounded-xl hover:bg-white/5 transition"
+            style="border:1px solid rgba(255,255,255,0.08)">
+            <span class="text-sm text-white/80">${label}</span>
+            <div class="relative flex-shrink-0">
+              <input type="checkbox" id="${id}" class="sr-only" ${val?'checked':''}>
+              <div onclick="document.getElementById('${id}').click();
+                var c=document.getElementById('${id}').checked;
+                this.style.background=c?'#7c3aed':'rgba(255,255,255,0.1)';
+                this.querySelector('div').style.transform=c?'translateX(20px)':'translateX(0)';"
+                style="width:44px;height:24px;border-radius:12px;background:${val?'#7c3aed':'rgba(255,255,255,0.1)'};transition:all .2s;cursor:pointer;position:relative">
+                <div style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:10px;background:#fff;transition:all .2s;transform:${val?'translateX(20px)':'translateX(0)'}"></div>
+              </div>
+            </div>
+          </label>`).join('')}
+        </div>
+
+        <!-- เตือน posttest -->
+        <div class="rounded-xl px-3 py-2" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2)">
+          <p class="text-xs text-amber-400">💡 เวลา &gt; 0 = บันทึก DB | เวลา = 0 = ส่งแค่ Flex</p>
+        </div>
+
+        <!-- Buttons -->
+        <div class="flex gap-3 pt-1">
+          <button onclick="document.getElementById('qs-modal').remove()"
+            class="flex-1 py-3 rounded-2xl text-sm font-semibold"
+            style="background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7)">
+            ยกเลิก
+          </button>
+          <button onclick="saveQuizSettings('${q.id}')"
+            class="flex-1 py-3 rounded-2xl btn-grad font-bold text-sm shadow-lg">
+            💾 บันทึก
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>`);
+}
+
+async function saveQuizSettings(id) {
+  const timeMins    = parseFloat(document.getElementById('qs-time')?.value     || '0');
+  const maxAttempts = parseInt(document.getElementById('qs-attempts')?.value   || '0');
+  const shuffleQ    = document.getElementById('qs-shuffle-q')?.checked  ?? false;
+  const shuffleC    = document.getElementById('qs-shuffle-c')?.checked  ?? false;
+  const showAnswer  = document.getElementById('qs-showanswer')?.checked ?? false;
+
+  // validate
+  if (isNaN(timeMins) || timeMins < 0) { toast('เวลาต้องเป็นตัวเลข ≥ 0','warning'); return; }
+
+  const timeSecs = Math.round(timeMins * 60);
+
+  const { error } = await sb.from('quiz_sets').update({
+    time_limit_seconds: timeSecs,
+    max_attempts:       maxAttempts,
+    shuffle_questions:  shuffleQ,
+    shuffle_choices:    shuffleC,
+    show_answer_after:  showAnswer,
+    updated_at:         new Date().toISOString(),
+  }).eq('id', id);
+
+  if (error) { toast('บันทึกไม่สำเร็จ: ' + error.message, 'error'); return; }
+
+  document.getElementById('qs-modal')?.remove();
+  toast('บันทึกการตั้งค่าแล้ว', 'success');
+  admQuizSets(); // refresh ตาราง
 }
 
 async function admStudents() {
