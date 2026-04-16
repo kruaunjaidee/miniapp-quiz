@@ -88,6 +88,14 @@ body{
 .drop-zone.over{border-color:#7c3aed;background:rgba(124,58,237,.15)}
 .drop-zone.matched{border-color:#22c55e;background:rgba(34,197,94,.1)}
 
+/* Wheel Spin */
+@keyframes wheelGlow{0%,100%{box-shadow:0 0 20px rgba(124,58,237,.6)}50%{box-shadow:0 0 40px rgba(34,211,238,.8)}}
+@keyframes resultPop{0%{opacity:0;transform:translateX(-50%) scale(.6)}60%{transform:translateX(-50%) scale(1.08)}100%{opacity:1;transform:translateX(-50%) scale(1)}}
+.wheel-spin-btn{background:linear-gradient(135deg,#7c3aed,#22d3ee);color:#fff;font-family:'Kanit',sans-serif;font-weight:700;font-size:1.15rem;border:none;cursor:pointer;border-radius:50%;width:72px;height:72px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(124,58,237,.5);transition:all .2s;letter-spacing:.03em}
+.wheel-spin-btn:hover{filter:brightness(1.15);transform:scale(1.06)}
+.wheel-spin-btn:active{transform:scale(.97)}
+.wheel-spin-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
 /* Modal */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);z-index:100;display:flex;align-items:flex-end;justify-content:center;padding:16px;animation:fadeIn .2s ease}
 .modal-sheet{background:#12121e;border:1px solid rgba(255,255,255,.10);border-radius:24px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;animation:slideUp .3s ease}
@@ -123,6 +131,8 @@ body{
 
 /* Line clamp */
 .lc2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+body {margin-bottom: var(--android-safe-area-inset-bottom, env(safe-area-inset-bottom));}
 </style>
 </head>
 <body>
@@ -421,7 +431,7 @@ function filterQuiz(type) {
   renderQuizCards(type==='all' ? ALL_QUIZ : ALL_QUIZ.filter(q=>q.test_type===type));
 }
 
-const QICON={multiple_choice:'📝',fill_blank:'✏️',drag_drop:'🎯',wheel_spin:'🎡',true_false:'✅',memory:'🧠',match:'🃏'};
+const QICON={multiple_choice:'📝',fill_blank:'✏️',drag_drop:'🎯',wheel_spin:'🎡',true_false:'✅',memory:'🧠',match:'🃏',wheel_spin:'🎡'};
 const TBADGE={pretest:['ก่อนเรียน','bg-blue'],posttest:['หลังเรียน','bg-green'],practice:['ฝึกหัด','bg-amber']};
 
 function renderQuizCards(list) {
@@ -483,6 +493,8 @@ async function openQuiz(id) {
     if (q.quiz_type === 'memory') { openMemoryGame(q); return; }
     // ── Match game → เปิดหน้าเกมจับคู่ ──
     if (q.quiz_type === 'match')  { openMatchGame(q);  return; }
+    // ── Wheel Spin game ──
+    if (q.quiz_type === 'wheel_spin') { openWheelGame(q); return; }
 
     const lb = await getLB(id);
 
@@ -1708,6 +1720,452 @@ function matchCleanup() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// WHEEL SPIN GAME — เกมหมุนวงล้อสุ่ม
+// ══════════════════════════════════════════════════════════════
+let WHEEL_ITEMS = [], WHEEL_SPINNING = false, WHEEL_RESULT = null;
+let WHEEL_ARC = 0, WHEEL_RAF = null;
+
+async function openWheelGame(quizSet) {
+  showLoader('กำลังโหลดวงล้อ...');
+  const items = await api(`get-wheel-items?quiz_set_id=${quizSet.id}`);
+  if (!items || !items.length) {
+    toast('ยังไม่มีช่องวงล้อในเกมนี้', 'warning'); renderHome(); return;
+  }
+  WHEEL_ITEMS = items;
+  WHEEL_SPINNING = false;
+  WHEEL_RESULT = null;
+  WHEEL_ARC = Math.random() * Math.PI * 2; // มุมเริ่มแบบสุ่ม
+  renderWheelBoard(quizSet);
+}
+
+function renderWheelBoard(quizSet) {
+  setApp(`
+  <nav class="sticky top-0 z-40 glass border-b border-white/10 px-4 py-3">
+    <div class="flex items-center gap-3 max-w-lg mx-auto">
+      <button onclick="wheelCleanup();renderHome()" class="p-2 rounded-xl hover:bg-white/10 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </button>
+      <h1 class="font-bold font-kanit text-sm flex-1 truncate">🎡 ${esc(quizSet.title)}</h1>
+    </div>
+  </nav>
+  <div class="max-w-lg mx-auto px-4 py-6">
+    <!-- Wheel canvas area -->
+    <div class="flex flex-col items-center gap-6">
+      <!-- Pointer -->
+      <div class="relative w-full flex justify-center" style="max-width:340px">
+        <!-- Triangle pointer -->
+        <div style="position:absolute;top:-2px;left:50%;transform:translateX(-50%);z-index:10;
+          width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;
+          border-top:28px solid #f1f5f9;filter:drop-shadow(0 2px 6px rgba(0,0,0,.6));"></div>
+        <canvas id="wheel-canvas" width="340" height="340"
+          style="border-radius:50%;box-shadow:0 0 0 6px rgba(124,58,237,.4),0 8px 40px rgba(0,0,0,.5);display:block;"></canvas>
+      </div>
+
+      <!-- Spin button -->
+      <button id="wheel-spin-btn" class="wheel-spin-btn" onclick="spinWheel()">
+        🎡<br><span style="font-size:.65rem">หมุน!</span>
+      </button>
+
+      <!-- Result area (hidden until spin) -->
+      <div id="wheel-result-area" style="display:none;width:100%;"></div>
+    </div>
+
+    <!-- Items list -->
+    <div class="mt-6 glass rounded-2xl border border-white/10 overflow-hidden">
+      <div class="px-4 py-3 border-b border-white/10">
+        <h3 class="font-bold text-sm font-kanit">ช่องทั้งหมด (${WHEEL_ITEMS.length} ช่อง)</h3>
+      </div>
+      <div class="p-3 flex flex-wrap gap-2">
+        ${WHEEL_ITEMS.map(it => `
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium"
+          style="background:${it.color}22;border:1px solid ${it.color}55;color:#f1f5f9">
+          <span style="width:8px;height:8px;border-radius:50%;background:${it.color};display:inline-block;flex-shrink:0"></span>
+          ${esc(it.label)}
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>`);
+
+  drawWheel(WHEEL_ARC);
+}
+
+function drawWheel(startAngle) {
+  const canvas = document.getElementById('wheel-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2, r = cx - 6;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // expand items by weight for probability
+  const expanded = [];
+  WHEEL_ITEMS.forEach(it => {
+    const w = Math.max(1, parseInt(it.weight) || 1);
+    for (let i = 0; i < w; i++) expanded.push(it);
+  });
+  const n = expanded.length;
+  const slice = (Math.PI * 2) / n;
+
+  expanded.forEach((it, i) => {
+    const a1 = startAngle + i * slice;
+    const a2 = a1 + slice;
+
+    // sector
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, a1, a2);
+    ctx.closePath();
+    ctx.fillStyle = it.color || '#7c3aed';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.25)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // text
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(a1 + slice / 2);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${n > 12 ? 11 : 13}px Sarabun, sans-serif`;
+    ctx.shadowColor = 'rgba(0,0,0,.6)';
+    ctx.shadowBlur = 3;
+    const maxLen = n > 12 ? 10 : 14;
+    const label = it.label.length > maxLen ? it.label.slice(0, maxLen - 1) + '…' : it.label;
+    ctx.fillText(label, r - 10, 5);
+    ctx.restore();
+  });
+
+  // center circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+  ctx.fillStyle = '#0a0a14';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.2)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px Sarabun';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🎡', cx, cy);
+}
+
+function spinWheel() {
+  if (WHEEL_SPINNING) return;
+  WHEEL_SPINNING = true;
+
+  // ซ่อนผลที่พบครั้งก่อน
+  const ra = document.getElementById('wheel-result-area');
+  if (ra) { ra.style.display = 'none'; ra.innerHTML = ''; }
+
+  const btn = document.getElementById('wheel-spin-btn');
+  if (btn) btn.disabled = true;
+
+  // สร้าง expanded items (คำนึงถึง weight)
+  const expanded = [];
+  WHEEL_ITEMS.forEach(it => {
+    const w = Math.max(1, parseInt(it.weight) || 1);
+    for (let i = 0; i < w; i++) expanded.push(it);
+  });
+  const n = expanded.length;
+  const slice = (Math.PI * 2) / n;
+
+  // สุ่มผลลัพธ์
+  const winIdx = Math.floor(Math.random() * n);
+  WHEEL_RESULT = expanded[winIdx];
+
+  // เล่นเสียงหมุน
+  playWheelSpinSound();
+
+  // แอนิเมชั่น: หมุนอย่างน้อย 5 รอบ + หยุดที่ winIdx
+  const totalRota = Math.PI * 2 * (5 + Math.random() * 3);
+  // มุมปลายที่ pointer (แนวบน = -PI/2) ชี้ที่ winIdx
+  // pointer อยู่บนสุด → canvas หมุน angle = startAngle ที่ทำให้ winIdx sector กลางหน้า pointer
+  const winAngle = -(winIdx * slice + slice / 2) - Math.PI / 2;
+  const startA   = WHEEL_ARC;
+  const endA     = winAngle - Math.floor((winAngle - startA) / (Math.PI * 2)) * (Math.PI * 2) + Math.PI * 2 * 5;
+
+  const duration = 4000 + Math.random() * 1500;
+  const t0 = performance.now();
+
+  function easeOut(t) { return 1 - Math.pow(1 - t, 4); }
+
+  function frame(now) {
+    const elapsed = now - t0;
+    const prog = Math.min(elapsed / duration, 1);
+    const angle = startA + (endA - startA) * easeOut(prog);
+    WHEEL_ARC = angle;
+    drawWheel(angle);
+    if (prog < 1) {
+      WHEEL_RAF = requestAnimationFrame(frame);
+    } else {
+      WHEEL_SPINNING = false;
+      if (btn) btn.disabled = false;
+      showWheelResult(WHEEL_RESULT);
+    }
+  }
+  WHEEL_RAF = requestAnimationFrame(frame);
+}
+
+function showWheelResult(item) {
+  const ra = document.getElementById('wheel-result-area');
+  if (!ra) return;
+
+  // เล่นเสียงของช่องที่ออก
+  if (item.sound_url) {
+    try { new Audio(item.sound_url).play(); } catch(e){}
+  } else {
+    playWheelWinSound();
+  }
+
+  confetti(2500);
+
+  const hasMedia = !!(item.image_url || item.video_url);
+
+  ra.innerHTML = `
+  <div class="glass rounded-3xl border-2 p-5 anim-bounce" style="border-color:${item.color};box-shadow:0 0 30px ${item.color}44">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="w-4 h-4 rounded-full flex-shrink-0" style="background:${item.color};box-shadow:0 0 10px ${item.color}"></span>
+      <h3 class="font-bold font-kanit text-lg" style="color:${item.color}">${esc(item.label)}</h3>
+      <span class="text-2xl ml-auto">🎉</span>
+    </div>
+    ${item.video_url ? `
+    <div class="rounded-2xl overflow-hidden bg-black aspect-video mb-3">
+      <video controls autoplay class="w-full h-full" style="max-height:220px">
+        <source src="${item.video_url}"/>
+        <iframe src="${item.video_url}" class="w-full h-full" frameborder="0" allowfullscreen></iframe>
+      </video>
+    </div>` : item.image_url ? `
+    <div class="rounded-2xl overflow-hidden mb-3" style="max-height:220px">
+      <img src="${item.image_url}" class="w-full object-contain rounded-2xl" style="max-height:220px" alt="result"
+        onerror="this.style.display='none'"/>
+    </div>` : ''}
+    ${item.description ? `<p class="text-white/80 text-sm leading-relaxed">${esc(item.description)}</p>` : ''}
+  </div>`;
+  ra.style.display = 'block';
+}
+
+function playWheelSpinSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const dur = 4;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(120, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + dur);
+    g.gain.setValueAtTime(.12, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + dur);
+    o.start(); o.stop(ctx.currentTime + dur);
+  } catch(e){}
+}
+
+function playWheelWinSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [523,659,784,1047].forEach((f,i) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = f;
+      g.gain.setValueAtTime(.25, ctx.currentTime + i * .12);
+      g.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + i * .12 + .3);
+      o.start(ctx.currentTime + i * .12);
+      o.stop(ctx.currentTime + i * .12 + .3);
+    });
+  } catch(e){}
+}
+
+function wheelCleanup() {
+  if (WHEEL_RAF) { cancelAnimationFrame(WHEEL_RAF); WHEEL_RAF = null; }
+  WHEEL_SPINNING = false;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ADMIN — ตั้งค่าช่องวงล้อสุ่ม
+// ══════════════════════════════════════════════════════════════
+const WHEEL_COLORS = ['#7c3aed','#4f46e5','#0ea5e9','#22c55e','#f59e0b','#ef4444','#ec4899','#14b8a6','#f97316','#8b5cf6'];
+
+async function openWheelSettings(quizSetId, title) {
+  showLoader('กำลังโหลดช่องวงล้อ...');
+  const existing = await api(`get-wheel-items?quiz_set_id=${quizSetId}`);
+
+  const initRows = existing.length
+    ? existing
+    : Array(6).fill(null).map((_,i) => ({ label:`ช่องที่ ${i+1}`, color: WHEEL_COLORS[i % WHEEL_COLORS.length], image_url:'', video_url:'', description:'', sound_url:'', weight:1 }));
+
+  window.wheelRowData = initRows.map(r => ({...r}));
+
+  const colorOpts = WHEEL_COLORS.map(c =>
+    `<option value="${c}">${c}</option>`).join('');
+
+  const renderRows = (rows) => rows.map((r,i) => `
+  <tr id="wrow-${i}">
+    <td class="text-center text-xs text-white/40 pr-2">${i+1}</td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="ชื่อช่อง *" value="${esc(r.label||'')}"
+      oninput="wheelRowData[${i}].label=this.value" style="min-width:100px"/></td>
+    <td>
+      <div class="flex items-center gap-1.5">
+        <input type="color" value="${r.color||'#7c3aed'}"
+          oninput="wheelRowData[${i}].color=this.value;document.getElementById('wc-${i}').style.background=this.value"
+          style="width:32px;height:28px;border:none;background:transparent;cursor:pointer"/>
+        <span id="wc-${i}" style="width:20px;height:20px;border-radius:6px;background:${r.color||'#7c3aed'};flex-shrink:0"></span>
+      </div>
+    </td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://image.jpg" value="${esc(r.image_url||'')}"
+      oninput="wheelRowData[${i}].image_url=this.value" style="min-width:130px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://video หรือ YouTube embed" value="${esc(r.video_url||'')}"
+      oninput="wheelRowData[${i}].video_url=this.value" style="min-width:130px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="คำอธิบาย..." value="${esc(r.description||'')}"
+      oninput="wheelRowData[${i}].description=this.value" style="min-width:100px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://sound.mp3" value="${esc(r.sound_url||'')}"
+      oninput="wheelRowData[${i}].sound_url=this.value" style="min-width:100px"/></td>
+    <td><input type="number" class="form-inp text-xs py-1.5" min="1" max="10" value="${r.weight||1}"
+      oninput="wheelRowData[${i}].weight=this.value" style="width:60px"/></td>
+    <td><button onclick="wheelDelRow(${i})" class="text-xs px-2 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/40 transition">✕</button></td>
+  </tr>`).join('');
+
+  setApp(`
+  <nav class="sticky top-0 z-40 glass border-b border-white/10 px-4 py-3">
+    <div class="flex items-center gap-3 max-w-6xl mx-auto">
+      <button onclick="admQuizSets()" class="p-2 rounded-xl hover:bg-white/10 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="flex-1">
+        <h1 class="font-bold font-kanit text-sm">🎡 ตั้งค่าช่องวงล้อ — ${esc(title)}</h1>
+        <p class="text-xs text-white/40">แต่ละแถว = 1 ช่องบนวงล้อ | Weight ยิ่งมาก ยิ่งออกบ่อย</p>
+      </div>
+      <button onclick="wheelSaveItems('${quizSetId}')" class="btn-grad px-4 py-2 rounded-xl text-sm font-bold shadow">💾 บันทึก</button>
+    </div>
+  </nav>
+
+  <div class="max-w-6xl mx-auto px-4 py-5">
+    <div class="stat-card overflow-hidden p-0 mb-4">
+      <div class="overflow-x-auto">
+        <table class="tbl" style="min-width:800px">
+          <thead><tr>
+            <th style="width:32px">#</th>
+            <th>ชื่อช่อง <span class="text-white/30 font-normal">*</span></th>
+            <th>สี</th>
+            <th>ภาพ (URL)</th>
+            <th>วิดีโอ (URL)</th>
+            <th>คำอธิบาย</th>
+            <th>เสียง (URL)</th>
+            <th>Weight</th>
+            <th style="width:40px"></th>
+          </tr></thead>
+          <tbody id="wheel-rows">${renderRows(window.wheelRowData)}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="flex gap-3 mb-5">
+      <button onclick="wheelAddRow()" class="px-4 py-2 rounded-xl border border-white/20 hover:bg-white/10 transition text-sm text-white/70">
+        + เพิ่มช่อง
+      </button>
+      <span class="text-xs text-white/40 self-center">รองรับ YouTube embed URL สำหรับวิดีโอ</span>
+    </div>
+
+    <!-- Preview vdo -->
+    <div class="stat-card">
+      <h3 class="font-bold text-sm mb-3">🎡 Preview วงล้อ</h3>
+      <canvas id="wheel-preview-canvas" width="300" height="300"
+        style="display:block;margin:auto;border-radius:50%;box-shadow:0 0 0 4px rgba(124,58,237,.3)"></canvas>
+      <div class="flex justify-center mt-4">
+        <button onclick="wheelPreviewDraw()" class="px-4 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/40 transition text-sm">🔄 อัปเดต Preview</button>
+      </div>
+    </div>
+  </div>`);
+
+  wheelPreviewDraw();
+}
+
+window.wheelAddRow = function() {
+  const i = window.wheelRowData.length;
+  const color = WHEEL_COLORS[i % WHEEL_COLORS.length];
+  window.wheelRowData.push({ label:`ช่องที่ ${i+1}`, color, image_url:'', video_url:'', description:'', sound_url:'', weight:1 });
+  const tbody = document.getElementById('wheel-rows');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.id = `wrow-${i}`;
+  tr.innerHTML = `
+    <td class="text-center text-xs text-white/40 pr-2">${i+1}</td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="ชื่อช่อง *" oninput="wheelRowData[${i}].label=this.value" style="min-width:100px"/></td>
+    <td>
+      <div class="flex items-center gap-1.5">
+        <input type="color" value="${color}"
+          oninput="wheelRowData[${i}].color=this.value;document.getElementById('wc-${i}').style.background=this.value"
+          style="width:32px;height:28px;border:none;background:transparent;cursor:pointer"/>
+        <span id="wc-${i}" style="width:20px;height:20px;border-radius:6px;background:${color};flex-shrink:0"></span>
+      </div>
+    </td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://image.jpg" oninput="wheelRowData[${i}].image_url=this.value" style="min-width:130px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://video" oninput="wheelRowData[${i}].video_url=this.value" style="min-width:130px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="คำอธิบาย..." oninput="wheelRowData[${i}].description=this.value" style="min-width:100px"/></td>
+    <td><input type="text" class="form-inp text-xs py-1.5" placeholder="https://sound.mp3" oninput="wheelRowData[${i}].sound_url=this.value" style="min-width:100px"/></td>
+    <td><input type="number" class="form-inp text-xs py-1.5" min="1" max="10" value="1" oninput="wheelRowData[${i}].weight=this.value" style="width:60px"/></td>
+    <td><button onclick="wheelDelRow(${i})" class="text-xs px-2 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/40 transition">✕</button></td>`;
+  tbody.appendChild(tr);
+};
+
+window.wheelDelRow = function(i) {
+  window.wheelRowData.splice(i, 1);
+  document.getElementById(`wrow-${i}`)?.remove();
+  document.querySelectorAll('#wheel-rows tr').forEach((tr,idx) => {
+    tr.id = `wrow-${idx}`;
+    const td = tr.querySelector('td:first-child');
+    if (td) td.textContent = idx + 1;
+  });
+  wheelPreviewDraw();
+};
+
+function wheelPreviewDraw() {
+  const canvas = document.getElementById('wheel-preview-canvas');
+  if (!canvas) return;
+  const rows = (window.wheelRowData || []).filter(r => r.label?.trim());
+  if (!rows.length) return;
+  // Temporarily override WHEEL_ITEMS for preview
+  const saved = WHEEL_ITEMS;
+  WHEEL_ITEMS = rows;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W/2, cy = H/2, r = cx - 4;
+  ctx.clearRect(0,0,W,H);
+  const expanded = [];
+  rows.forEach(it => { const w = Math.max(1, parseInt(it.weight)||1); for(let i=0;i<w;i++) expanded.push(it); });
+  const n = expanded.length;
+  const slice = Math.PI*2/n;
+  expanded.forEach((it,i) => {
+    const a1 = i*slice - Math.PI/2, a2 = a1+slice;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,a1,a2); ctx.closePath();
+    ctx.fillStyle = it.color||'#7c3aed'; ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=2; ctx.stroke();
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(a1+slice/2); ctx.textAlign='right';
+    ctx.fillStyle='#fff'; ctx.font=`bold ${n>12?10:12}px Sarabun,sans-serif`;
+    ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=3;
+    const lbl = it.label.length>12?it.label.slice(0,11)+'…':it.label;
+    ctx.fillText(lbl, r-8, 4); ctx.restore();
+  });
+  ctx.beginPath(); ctx.arc(cx,cy,18,0,Math.PI*2);
+  ctx.fillStyle='#0a0a14'; ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.2)'; ctx.lineWidth=2; ctx.stroke();
+  WHEEL_ITEMS = saved;
+}
+
+async function wheelSaveItems(quizSetId) {
+  const items = (window.wheelRowData || []).filter(r => r.label?.trim());
+  if (items.length < 2) { toast('กรุณาเพิ่มช่องอย่างน้อย 2 ช่อง', 'warning'); return; }
+  const payload = items.map((c,i) => ({ ...c, label: c.label.trim(), weight: parseInt(c.weight)||1, order_index: i }));
+  const res = await api('save-wheel-items', { method:'POST', body: JSON.stringify({ quizSetId, items: payload }) });
+  if (res.ok) { toast(`บันทึก ${res.saved} ช่องแล้ว`, 'success'); admQuizSets(); }
+  else toast('บันทึกไม่สำเร็จ: '+(res.error||''), 'error');
+}
+
+// ══════════════════════════════════════════════════════════════
 // MY SCORES — ดูคะแนนของตัวเอง (query จาก user_id โดยตรง)
 // ══════════════════════════════════════════════════════════════
 async function renderMyScores() {
@@ -1926,6 +2384,11 @@ async function admQuizSets() {
           <button onclick="openMemorySettings('${q.id}','${esc(q.title)}')"
             class="text-xs px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/40 transition">
             🃏 การ์ด
+          </button>`:''}
+          ${q.quiz_type==='wheel_spin'?`
+          <button onclick="openWheelSettings('${q.id}','${esc(q.title)}')"
+            class="text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/40 transition">
+            🎡 ช่องล้อ
           </button>`:''}
           <button onclick="togglePub('${q.id}',${q.is_published})"
             class="text-xs px-3 py-1.5 rounded-lg ${q.is_published?'bg-red-500/20 hover:bg-red-500/40':'bg-green-500/20 hover:bg-green-500/40'} transition">
