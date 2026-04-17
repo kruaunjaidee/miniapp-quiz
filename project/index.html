@@ -1123,50 +1123,50 @@
 
       return `
   <!-- คำแนะนำ -->
-  <div class="flex items-center justify-center gap-2 mb-3">
-    <span>🎯</span>
+  <div class="flex items-center justify-center gap-2 mb-5">
+    <span class="text-lg">🎯</span>
     <p class="text-xs text-white/55 font-medium">ลากคำจากด้านล่างวางลงช่องที่ตรงกัน</p>
   </div>
 
   <!-- คอลัมน์จับคู่: ซ้าย = คำตั้ง, ขวา = drop zone -->
-  <div class="space-y-2 mb-3">
+  <div class="space-y-3 mb-6">
     ${left.map(p => `
-    <div class="flex items-stretch gap-2" style="min-height:56px">
+    <div class="flex items-stretch gap-3" style="min-height:70px">
       <!-- Label ซ้าย -->
-      <div class="flex items-center gap-2 glass border border-white/12 rounded-xl px-3 py-2 flex-1" style="flex:1 1 0;min-width:0">
-        ${p.img ? `<img src="${p.img}" class="w-8 h-8 object-contain rounded-lg flex-shrink-0" alt=""/>` : 
-          `<span class="w-6 h-6 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-300 text-xs font-bold flex-shrink-0">→</span>`}
+      <div class="flex items-center gap-2 glass border border-white/12 rounded-2xl px-4 py-3 flex-1" style="flex:1 1 0;min-width:0">
+        ${p.img ? `<img src="${p.img}" class="w-10 h-10 object-contain rounded-xl flex-shrink-0" alt=""/>` : 
+          `<span class="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-300 text-xs font-bold flex-shrink-0">→</span>`}
         <span class="font-semibold text-sm leading-snug">${esc(p.text)}</span>
       </div>
       <!-- Drop zone ขวา -->
-      <div class="drop-zone flex items-center justify-center text-xs text-white/35 font-medium px-2"
+      <div class="drop-zone flex items-center justify-center text-xs text-white/35 font-medium px-3"
         data-pid="${p.id}" id="dz-${p.id}"
         ondragover="event.preventDefault();ddDragOver(this)"
         ondragleave="ddDragLeave(this)"
         ondrop="ddDrop(event,'${p.id}')"
-        style="flex:1 1 0;min-width:0;cursor:copy;min-height:56px;border-radius:12px">
-        <span id="dz-label-${p.id}" class="flex items-center gap-1"><span>＋</span> วางที่นี่</span>
+        style="flex:1 1 0;min-width:0;cursor:copy">
+        <span id="dz-label-${p.id}" class="flex items-center gap-2"><span style="font-size:1.2rem">＋</span> วางที่นี่</span>
       </div>
     </div>`).join('')}
   </div>
 
   <!-- ตะกร้า drag items -->
-  <div class="glass border border-white/10 rounded-xl p-3 mb-3">
-    <p class="text-xs text-white/40 mb-2 font-medium">📦 รายการที่ต้องจับคู่</p>
-    <div class="grid gap-2" id="dd-bank" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
+  <div class="glass border border-white/10 rounded-2xl p-4 mb-5">
+    <p class="text-xs text-white/40 mb-3 font-medium">📦 รายการที่ต้องจับคู่</p>
+    <div class="grid gap-2" id="dd-bank" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr))">
       ${right.map(p => `
       <div class="dd-bank-item"
         id="dg-${p.id}" data-pid="${p.id}" draggable="true"
         ondragstart="ddDragStart(event,'${p.id}')"
         ondragend="ddDragEnd(event,'${p.id}')"
         ontouchstart="ddTouchStart(event,'${p.id}')" ontouchmove="ddTouchMove(event)" ontouchend="ddTouchEnd(event)">
-        ${p.img ? `<img src="${p.img}" class="w-8 h-8 object-contain rounded-lg flex-shrink-0" alt=""/>` : ''}
+        ${p.img ? `<img src="${p.img}" class="w-10 h-10 object-contain rounded-xl flex-shrink-0" alt=""/>` : ''}
         <span>${esc(p.text)}</span>
       </div>`).join('')}
     </div>
   </div>
 
-  <button onclick="submitDD()" class="w-full py-3 rounded-xl btn-grad font-bold text-sm shadow-lg">✓ ตรวจคำตอบ</button>`;
+  <button onclick="submitDD()" class="w-full py-4 rounded-2xl btn-grad font-bold text-sm shadow-lg">✓ ตรวจคำตอบ</button>`;
     }
 
     /* ── helpers drag/drop desktop ── */
