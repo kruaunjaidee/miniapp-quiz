@@ -3328,52 +3328,319 @@
     }
 
     async function admImport() {
-      const { data: qs } = await sb.from('quiz_sets').select('id,title').order('title');
+      const { data: qs } = await sb.from('quiz_sets').select('id,title,test_type,quiz_type,pass_score,description,time_limit_seconds,max_attempts').order('title');
+      const { data: units } = await sb.from('quiz_units').select('id,title').order('title');
+
       document.getElementById('adm-content').innerHTML = `
-  <div class="max-w-xl">
-    <div class="stat-card mb-5">
-      <h3 class="font-bold mb-4">📤 Import ข้อสอบจาก CSV</h3>
-      <div class="space-y-4">
-        <div><label class="text-xs text-white/50 block mb-1">เลือกชุดแบบทดสอบ</label>
-          <select id="imp-qid" class="form-inp"><option value="">-- เลือก --</option>${(qs || []).map(q => `<option value="${q.id}">${esc(q.title)}</option>`).join('')}</select></div>
-        <div><label class="text-xs text-white/50 block mb-1">ไฟล์ CSV</label>
-          <input type="file" id="imp-file" accept=".csv" class="form-inp file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-purple-600/40 file:text-white file:text-xs cursor-pointer"/></div>
-        <div class="flex gap-3">
-          <button onclick="doImport()" class="btn-grad px-5 py-3 rounded-xl font-semibold text-sm">📤 Import</button>
-          <button onclick="dlTemplate()" class="px-5 py-3 rounded-xl border border-white/20 hover:bg-white/10 transition text-sm text-white/70">⬇ Template</button>
+  <div class="max-w-2xl space-y-5">
+
+    <!-- ── ส่วนข้อมูลชุดแบบทดสอบ ── -->
+    <div class="stat-card">
+      <h3 class="font-bold mb-4 flex items-center gap-2">📝 ข้อมูลชุดแบบทดสอบ</h3>
+
+      <!-- Mode toggle -->
+      <div class="flex gap-2 mb-5">
+        <button id="imp-mode-new" onclick="impSetMode('new')"
+          class="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+          style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff">
+          ✨ สร้างชุดใหม่
+        </button>
+        <button id="imp-mode-exists" onclick="impSetMode('exists')"
+          class="flex-1 py-2.5 rounded-xl text-sm font-semibold transition"
+          style="background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.6)">
+          📂 แก้ไขชุดที่มีอยู่
+        </button>
+      </div>
+
+      <!-- เลือกชุดที่มีอยู่ (hidden ตอนแรก) -->
+      <div id="imp-exists-row" class="mb-4" style="display:none">
+        <label class="text-xs text-white/50 block mb-1">เลือกชุดแบบทดสอบ</label>
+        <select id="imp-qid" class="form-inp" onchange="impLoadExisting(this.value)">
+          <option value="">-- เลือก --</option>
+          ${(qs || []).map(q => `<option value="${q.id}" data-obj='${JSON.stringify(q)}'>${esc(q.title)}</option>`).join('')}
+        </select>
+      </div>
+
+      <!-- ฟอร์มข้อมูล -->
+      <div class="grid gap-4">
+
+        <div class="grid grid-cols-2 gap-3">
+          <!-- ชื่อชุด -->
+          <div class="col-span-2">
+            <label class="text-xs text-white/50 block mb-1">ชื่อชุดแบบทดสอบ <span class="text-red-400">*</span></label>
+            <input id="imp-title" type="text" class="form-inp" placeholder="เช่น แบบทดสอบบทที่ 1"/>
+          </div>
+
+          <!-- test_type -->
+          <div>
+            <label class="text-xs text-white/50 block mb-1">ประเภทการทดสอบ</label>
+            <select id="imp-testtype" class="form-inp">
+              <option value="practice">🟡 ฝึกหัด</option>
+              <option value="pretest">🔵 ก่อนเรียน</option>
+              <option value="posttest">🟢 หลังเรียน</option>
+            </select>
+          </div>
+
+          <!-- quiz_type -->
+          <div>
+            <label class="text-xs text-white/50 block mb-1">รูปแบบข้อสอบ</label>
+            <select id="imp-quiztype" class="form-inp">
+              <option value="multiple_choice">📝 ปรนัย</option>
+              <option value="true_false">✅ ถูก/ผิด</option>
+              <option value="fill_blank">✏️ เติมคำ</option>
+              <option value="drag_drop">🎯 ลากวาง</option>
+              <option value="memory">🧠 จำตำแหน่ง</option>
+              <option value="match">🃏 จับคู่</option>
+              <option value="wheel_spin">🎡 วงล้อสุ่ม</option>
+            </select>
+          </div>
+
+          <!-- pass_score -->
+          <div>
+            <label class="text-xs text-white/50 block mb-1">คะแนนผ่าน (%)</label>
+            <input id="imp-pass" type="number" min="0" max="100" value="60" class="form-inp" placeholder="60"/>
+          </div>
+
+          <!-- time_limit_seconds -->
+          <div>
+            <label class="text-xs text-white/50 block mb-1">เวลาจำกัด (นาที, 0=ไม่จำกัด)</label>
+            <input id="imp-time" type="number" min="0" max="180" value="0" class="form-inp" placeholder="0"/>
+          </div>
+
+          <!-- max_attempts -->
+          <div>
+            <label class="text-xs text-white/50 block mb-1">ครั้งที่ทำได้ (0=ไม่จำกัด)</label>
+            <select id="imp-attempts" class="form-inp">
+              <option value="0">ไม่จำกัด</option>
+              <option value="1">1 ครั้ง</option>
+              <option value="2">2 ครั้ง</option>
+              <option value="3">3 ครั้ง</option>
+              <option value="5">5 ครั้ง</option>
+            </select>
+          </div>
+
+          <!-- หน่วยการเรียน -->
+          <div>
+            <label class="text-xs text-white/50 block mb-1">หน่วยการเรียน</label>
+            <select id="imp-unit" class="form-inp">
+              <option value="">-- ไม่ระบุ --</option>
+              ${(units || []).map(u => `<option value="${u.id}">${esc(u.title)}</option>`).join('')}
+            </select>
+          </div>
+
+          <!-- description -->
+          <div class="col-span-2">
+            <label class="text-xs text-white/50 block mb-1">คำอธิบาย</label>
+            <input id="imp-desc" type="text" class="form-inp" placeholder="คำอธิบายสั้นๆ (ไม่บังคับ)"/>
+          </div>
+
+          <!-- toggles -->
+          <div class="col-span-2 flex flex-wrap gap-4">
+            <label class="flex items-center gap-2 cursor-pointer text-sm text-white/70">
+              <input type="checkbox" id="imp-shuffleq" class="w-4 h-4 accent-purple-500"/> สุ่มลำดับข้อ
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer text-sm text-white/70">
+              <input type="checkbox" id="imp-shufflec" class="w-4 h-4 accent-purple-500"/> สุ่มตัวเลือก
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer text-sm text-white/70">
+              <input type="checkbox" id="imp-showanswer" class="w-4 h-4 accent-purple-500"/> แสดงเฉลยหลังตอบ
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer text-sm text-white/70">
+              <input type="checkbox" id="imp-published" class="w-4 h-4 accent-purple-500" checked/> เผยแพร่ทันที
+            </label>
+          </div>
         </div>
       </div>
     </div>
+
+    <!-- ── ส่วน Import CSV ── -->
+    <div class="stat-card">
+      <h3 class="font-bold mb-4 flex items-center gap-2">📤 Import ข้อสอบจาก CSV</h3>
+      <div class="space-y-4">
+        <div>
+          <label class="text-xs text-white/50 block mb-1">ไฟล์ CSV</label>
+          <input type="file" id="imp-file" accept=".csv"
+            class="form-inp file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-purple-600/40 file:text-white file:text-xs cursor-pointer"/>
+          <p class="text-xs text-white/30 mt-1">ไม่ต้องแนบไฟล์ถ้าต้องการแค่บันทึก/แก้ไขข้อมูลชุดแบบทดสอบ</p>
+        </div>
+        <div class="flex gap-3 flex-wrap">
+          <button onclick="doImport()" class="btn-grad px-5 py-3 rounded-xl font-semibold text-sm">
+            💾 บันทึก &amp; Import
+          </button>
+          <button onclick="dlTemplate()" class="px-5 py-3 rounded-xl border border-white/20 hover:bg-white/10 transition text-sm text-white/70">
+            ⬇ ดาวน์โหลด Template
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── คำอธิบาย format ── -->
     <div class="stat-card">
       <h3 class="font-bold text-sm mb-3">📋 รูปแบบ CSV (header row)</h3>
-      <div class="bg-black/30 rounded-xl p-3 font-mono text-xs text-green-400 overflow-x-auto mb-3">question_text,question_type,choice_a,choice_b,choice_c,choice_d,correct_answer,explanation,difficulty,points,image_url</div>
-      <p class="text-xs text-white/50 mb-2">correct_answer: ใส่ A/B/C/D สำหรับ multiple_choice หรือคำตอบตรงๆ สำหรับ fill_blank</p>
+      <div class="bg-black/30 rounded-xl p-3 font-mono text-xs text-green-400 overflow-x-auto mb-3">
+        question_text,question_type,choice_a,choice_b,choice_c,choice_d,correct_answer,explanation,difficulty,points,image_url
+      </div>
+      <div class="space-y-1 text-xs text-white/50">
+        <p>• <span class="text-white/70">question_type</span>: multiple_choice | fill_blank | true_false | drag_drop</p>
+        <p>• <span class="text-white/70">correct_answer</span>: A/B/C/D สำหรับ multiple_choice | คำตอบตรงๆ สำหรับ fill_blank | true/false</p>
+        <p>• <span class="text-white/70">difficulty</span>: easy | medium | hard</p>
+        <p>• <span class="text-white/70">points</span>: คะแนนต่อข้อ (ค่าเริ่มต้น 1)</p>
+      </div>
     </div>
-    <div id="imp-result" class="mt-4"></div>
+
+    <div id="imp-result" class="mt-1"></div>
   </div>`;
+
+      // state
+      window._impMode = 'new';
+      window._impExistingId = null;
+    }
+
+    function impSetMode(mode) {
+      window._impMode = mode;
+      window._impExistingId = null;
+      const btnNew = document.getElementById('imp-mode-new');
+      const btnEx  = document.getElementById('imp-mode-exists');
+      const rowEx  = document.getElementById('imp-exists-row');
+      if (mode === 'new') {
+        btnNew.style.cssText = 'flex:1;padding:.625rem;border-radius:.75rem;font-size:.875rem;font-weight:600;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff';
+        btnEx.style.cssText  = 'flex:1;padding:.625rem;border-radius:.75rem;font-size:.875rem;font-weight:600;background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.6)';
+        rowEx.style.display  = 'none';
+        // clear form
+        ['imp-title','imp-desc'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+        document.getElementById('imp-testtype').value = 'practice';
+        document.getElementById('imp-quiztype').value = 'multiple_choice';
+        document.getElementById('imp-pass').value = '60';
+        document.getElementById('imp-time').value = '0';
+        document.getElementById('imp-attempts').value = '0';
+        document.getElementById('imp-published').checked = true;
+      } else {
+        btnEx.style.cssText  = 'flex:1;padding:.625rem;border-radius:.75rem;font-size:.875rem;font-weight:600;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff';
+        btnNew.style.cssText = 'flex:1;padding:.625rem;border-radius:.75rem;font-size:.875rem;font-weight:600;background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.6)';
+        rowEx.style.display  = 'block';
+      }
+    }
+
+    function impLoadExisting(id) {
+      if (!id) { window._impExistingId = null; return; }
+      window._impExistingId = id;
+      const opt = document.querySelector(`#imp-qid option[value="${id}"]`);
+      if (!opt) return;
+      try {
+        const q = JSON.parse(opt.dataset.obj);
+        document.getElementById('imp-title').value   = q.title || '';
+        document.getElementById('imp-desc').value    = q.description || '';
+        document.getElementById('imp-testtype').value = q.test_type || 'practice';
+        document.getElementById('imp-quiztype').value = q.quiz_type || 'multiple_choice';
+        document.getElementById('imp-pass').value    = q.pass_score || 60;
+        document.getElementById('imp-time').value    = q.time_limit_seconds > 0 ? q.time_limit_seconds / 60 : 0;
+        document.getElementById('imp-attempts').value = q.max_attempts || 0;
+      } catch(e) {}
     }
 
     async function doImport() {
-      const qid = document.getElementById('imp-qid').value;
-      const file = document.getElementById('imp-file').files[0];
-      if (!qid) { toast('กรุณาเลือกชุดแบบทดสอบ', 'warning'); return; }
-      if (!file) { toast('กรุณาเลือกไฟล์', 'warning'); return; }
-      const r = document.getElementById('imp-result');
-      r.innerHTML = `<div class="stat-card animate-pulse text-white/60 text-sm">กำลัง import...</div>`;
-      const fd = new FormData(); fd.append('file', file); fd.append('quiz_set_id', qid);
+      const title      = document.getElementById('imp-title').value.trim();
+      const testType   = document.getElementById('imp-testtype').value;
+      const quizType   = document.getElementById('imp-quiztype').value;
+      const passScore  = parseFloat(document.getElementById('imp-pass').value) || 60;
+      const timeMins   = parseFloat(document.getElementById('imp-time').value) || 0;
+      const maxAttempts= parseInt(document.getElementById('imp-attempts').value) || 0;
+      const shuffleQ   = document.getElementById('imp-shuffleq')?.checked ?? false;
+      const shuffleC   = document.getElementById('imp-shufflec')?.checked ?? false;
+      const showAnswer = document.getElementById('imp-showanswer')?.checked ?? false;
+      const published  = document.getElementById('imp-published')?.checked ?? true;
+      const unitId     = document.getElementById('imp-unit')?.value || null;
+      const desc       = document.getElementById('imp-desc').value.trim();
+      const file       = document.getElementById('imp-file').files[0];
+      const r          = document.getElementById('imp-result');
+
+      if (!title) { toast('กรุณาใส่ชื่อชุดแบบทดสอบ', 'warning'); return; }
+
+      const mode = window._impMode || 'new';
+      let quizSetId = window._impExistingId || null;
+
+      r.innerHTML = `<div class="stat-card animate-pulse text-white/60 text-sm">กำลังบันทึกข้อมูล...</div>`;
+
       try {
+        const payload = {
+          title,
+          description: desc || null,
+          test_type: testType,
+          quiz_type: quizType,
+          pass_score: passScore,
+          time_limit_seconds: Math.round(timeMins * 60),
+          max_attempts: maxAttempts,
+          shuffle_questions: shuffleQ,
+          shuffle_choices: shuffleC,
+          show_answer_after: showAnswer,
+          is_published: published,
+          unit_id: unitId || null,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (mode === 'new') {
+          // สร้างชุดใหม่
+          const { data: newSet, error: insErr } = await sb.from('quiz_sets').insert(payload).select('id').single();
+          if (insErr) throw new Error('สร้างชุดไม่สำเร็จ: ' + insErr.message);
+          quizSetId = newSet.id;
+          toast('สร้างชุดแบบทดสอบใหม่แล้ว ✓', 'success');
+        } else {
+          // แก้ไขชุดที่มีอยู่
+          if (!quizSetId) { toast('กรุณาเลือกชุดแบบทดสอบ', 'warning'); r.innerHTML=''; return; }
+          const { error: updErr } = await sb.from('quiz_sets').update(payload).eq('id', quizSetId);
+          if (updErr) throw new Error('อัปเดตไม่สำเร็จ: ' + updErr.message);
+          toast('อัปเดตข้อมูลชุดแบบทดสอบแล้ว ✓', 'success');
+        }
+
+        // ถ้าไม่มีไฟล์ → จบแค่บันทึกข้อมูล
+        if (!file) {
+          r.innerHTML = `
+            <div class="stat-card border border-green-500/30 bg-green-500/5">
+              <p class="text-green-400 font-bold mb-1">✅ บันทึกข้อมูลสำเร็จ!</p>
+              <p class="text-sm text-white/70">ชุดแบบทดสอบ "${esc(title)}" ${mode==='new'?'ถูกสร้างแล้ว':'ถูกอัปเดตแล้ว'}</p>
+              <button onclick="admQuizSets()" class="mt-3 px-4 py-2 rounded-xl btn-grad text-sm font-semibold">
+                → ไปที่ชุดแบบทดสอบ
+              </button>
+            </div>`;
+          admQuizSets();
+          return;
+        }
+
+        // มีไฟล์ → import คำถาม
+        r.innerHTML = `<div class="stat-card animate-pulse text-white/60 text-sm">กำลัง import คำถาม...</div>`;
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('quiz_set_id', quizSetId);
         const res = await fetch(`${API_BASE}/import-questions`, { method: 'POST', body: fd });
         const d = await res.json();
-        r.innerHTML = d.ok
-          ? `<div class="stat-card border border-green-500/30 bg-green-500/5"><p class="text-green-400 font-bold mb-2">✅ Import สำเร็จ!</p><p class="text-sm text-white/70">นำเข้า ${d.imported}/${d.total} รายการ</p>${d.errors?.length ? `<div class="mt-3 text-xs text-red-400">${d.errors.join('<br>')}</div>` : ''}</div>`
-          : `<div class="stat-card border border-red-500/30"><p class="text-red-400">${d.error}</p></div>`;
-        if (d.ok) toast(`Import สำเร็จ ${d.imported} ข้อ`, 'success');
-      } catch (e) { r.innerHTML = `<div class="stat-card border border-red-500/30"><p class="text-red-400">${esc(e.message)}</p></div>`; }
+        if (d.ok) {
+          r.innerHTML = `
+            <div class="stat-card border border-green-500/30 bg-green-500/5">
+              <p class="text-green-400 font-bold mb-2">✅ Import สำเร็จ!</p>
+              <p class="text-sm text-white/70 mb-1">ชุด: <span class="text-white font-semibold">${esc(title)}</span></p>
+              <p class="text-sm text-white/70">นำเข้า <span class="text-green-300 font-bold">${d.imported}/${d.total}</span> รายการ</p>
+              ${d.errors?.length ? `<div class="mt-3 text-xs text-red-400 space-y-0.5">${d.errors.map(e=>`<p>• ${esc(e)}</p>`).join('')}</div>` : ''}
+              <button onclick="admQuizSets()" class="mt-3 px-4 py-2 rounded-xl btn-grad text-sm font-semibold">
+                → ไปที่ชุดแบบทดสอบ
+              </button>
+            </div>`;
+          toast(`Import สำเร็จ ${d.imported} ข้อ 🎉`, 'success');
+          admQuizSets();
+        } else {
+          r.innerHTML = `<div class="stat-card border border-red-500/30"><p class="text-red-400">${esc(d.error)}</p></div>`;
+        }
+      } catch(e) {
+        r.innerHTML = `<div class="stat-card border border-red-500/30"><p class="text-red-400">${esc(e.message)}</p></div>`;
+        toast(e.message, 'error');
+      }
     }
 
     function dlTemplate() {
-      const c = '\uFEFF' + 'question_text,question_type,choice_a,choice_b,choice_c,choice_d,correct_answer,explanation,difficulty,points,image_url\n"ตัวอย่างคำถาม",multiple_choice,"ก","ข","ค","ง",A,"คำอธิบาย",easy,1,\n';
-      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([c], { type: 'text/csv;charset=utf-8;' })); a.download = 'template.csv'; a.click();
+      const c = '\uFEFF' + 'question_text,question_type,choice_a,choice_b,choice_c,choice_d,correct_answer,explanation,difficulty,points,image_url\n"ตัวอย่างคำถาม multiple_choice",multiple_choice,"ก","ข","ค","ง",A,"คำอธิบาย",easy,1,\n"คำถาม fill_blank เติมคำ",fill_blank,,,,,"คำตอบ","คำอธิบาย",easy,1,\n"ข้อความนี้ถูกต้องหรือไม่",true_false,,,,,true,"คำอธิบาย",easy,1,\n';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([c], { type: 'text/csv;charset=utf-8;' }));
+      a.download = 'quiz_template.csv';
+      a.click();
     }
 
     async function togglePub(id, cur) {
