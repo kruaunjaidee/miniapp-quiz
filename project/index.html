@@ -3504,11 +3504,20 @@
       <div class="bg-black/30 rounded-xl p-3 font-mono text-xs text-green-400 overflow-x-auto mb-3">
         question_text,question_type,choice_a,choice_b,choice_c,choice_d,correct_answer,explanation,difficulty,points,image_url
       </div>
-      <div class="space-y-1 text-xs text-white/50">
-        <p>• <span class="text-white/70">question_type</span>: multiple_choice | fill_blank | true_false | drag_drop</p>
+      <div class="space-y-2 text-xs text-white/50">
+        <p>• <span class="text-white/70">question_type</span>: multiple_choice | fill_blank | true_false | <span class="text-purple-300">drag_drop</span></p>
         <p>• <span class="text-white/70">correct_answer</span>: A/B/C/D สำหรับ multiple_choice | คำตอบตรงๆ สำหรับ fill_blank | true/false</p>
-        <p>• <span class="text-white/70">difficulty</span>: easy | medium | hard</p>
-        <p>• <span class="text-white/70">points</span>: คะแนนต่อข้อ (ค่าเริ่มต้น 1)</p>
+        <p>• <span class="text-white/70">difficulty</span>: easy | medium | hard &nbsp;|&nbsp; <span class="text-white/70">points</span>: คะแนนต่อข้อ (ค่าเริ่มต้น 1)</p>
+        <!-- drag_drop หมายเหตุพิเศษ -->
+        <div class="mt-2 rounded-xl p-3" style="background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.25)">
+          <p class="text-purple-300 font-semibold mb-1">🎯 รูปแบบ drag_drop (ลากวาง)</p>
+          <p class="mb-0.5">• <span class="text-white/70">choice_a</span> = ฝั่งซ้าย (left_item) <span class="text-red-400">*</span></p>
+          <p class="mb-0.5">• <span class="text-white/70">choice_b</span> = ฝั่งขวา (right_item) <span class="text-red-400">*</span></p>
+          <p class="mb-0.5">• <span class="text-white/70">choice_c</span> = รูปภาพซ้าย URL (ไม่บังคับ)</p>
+          <p class="mb-0.5">• <span class="text-white/70">choice_d</span> = รูปภาพขวา URL (ไม่บังคับ)</p>
+          <p class="mb-0.5">• <span class="text-white/70">correct_answer</span> = ไม่ต้องใส่</p>
+          <p class="mt-1 text-white/40">💡 ใส่ <span class="text-white/60">question_text เดียวกัน</span> หลายแถว = หลาย pairs ในคำถามเดียวกัน</p>
+        </div>
       </div>
     </div>
 
@@ -3660,7 +3669,16 @@
     }
 
     function dlTemplate() {
-      const c = '\uFEFF' + 'question_text,question_type,choice_a,choice_b,choice_c,choice_d,correct_answer,explanation,difficulty,points,image_url\n"ตัวอย่างคำถาม multiple_choice",multiple_choice,"ก","ข","ค","ง",A,"คำอธิบาย",easy,1,\n"คำถาม fill_blank เติมคำ",fill_blank,,,,,"คำตอบ","คำอธิบาย",easy,1,\n"ข้อความนี้ถูกต้องหรือไม่",true_false,,,,,true,"คำอธิบาย",easy,1,\n';
+      // drag_drop: question_text = ชื่อกลุ่มคำถาม, choice_a = ซ้าย (left_item), choice_b = ขวา (right_item)
+      //            choice_c = left_image_url (optional), choice_d = right_image_url (optional)
+      const c = '\uFEFF' +
+        'question_text,question_type,choice_a,choice_b,choice_c,choice_d,correct_answer,explanation,difficulty,points,image_url\n' +
+        '"ตัวอย่างปรนัย",multiple_choice,"ก","ข","ค","ง",A,"คำอธิบาย",easy,1,\n' +
+        '"ตัวอย่างเติมคำ",fill_blank,,,,,"คำตอบ","คำอธิบาย",easy,1,\n' +
+        '"ตัวอย่างถูก/ผิด",true_false,,,,,true,"คำอธิบาย",easy,1,\n' +
+        '"จับคู่ลากวาง: คำถามกลุ่มที่ 1",drag_drop,"ฝั่งซ้ายข้อ 1","ฝั่งขวาที่คู่กัน",,,,,,1,\n' +
+        '"จับคู่ลากวาง: คำถามกลุ่มที่ 1",drag_drop,"ฝั่งซ้ายข้อ 2","ฝั่งขวาที่คู่กัน",,,,,,1,\n' +
+        '"จับคู่ลากวาง: คำถามกลุ่มที่ 1",drag_drop,"ฝั่งซ้ายข้อ 3","ฝั่งขวาที่คู่กัน",,,,,,1,\n';
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([c], { type: 'text/csv;charset=utf-8;' }));
       a.download = 'quiz_template.csv';
