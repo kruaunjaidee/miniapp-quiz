@@ -246,27 +246,74 @@
     /* Drag & Drop */
     .drag-item {
       cursor: grab;
-      transition: all .2s;
+      transition: transform .15s, box-shadow .15s, opacity .15s;
       user-select: none;
-      touch-action: none
+      touch-action: none;
+      -webkit-user-select: none;
     }
-
-    .drag-item:active {
-      cursor: grabbing;
-      transform: scale(1.05);
-      opacity: .8
+    .drag-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(124,58,237,.35);
+    }
+    .drag-item:active { cursor: grabbing; }
+    .drag-item.dragging {
+      opacity: .35;
+      transform: scale(.97);
     }
 
     .drop-zone {
-      border: 2px dashed rgba(255, 255, 255, .2);
+      border: 2px dashed rgba(124,58,237,.35);
       transition: all .2s;
-      min-height: 48px;
-      border-radius: 12px
+      min-height: 68px;
+      border-radius: 16px;
+      background: rgba(124,58,237,.05);
     }
-
     .drop-zone.over {
-      border-color: #7c3aed;
-      background: rgba(124, 58, 237, .15)
+      border-color: #a78bfa;
+      border-style: solid;
+      background: rgba(124,58,237,.18);
+      transform: scale(1.01);
+    }
+    .drop-zone.matched-ok {
+      border-color: #22c55e;
+      border-style: solid;
+      background: rgba(34,197,94,.1);
+    }
+    .drop-zone.matched-err {
+      border-color: #ef4444;
+      border-style: solid;
+      background: rgba(239,68,68,.1);
+    }
+    .dd-bank-item {
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+      transition: transform .15s, box-shadow .15s, opacity .15s;
+      border-radius: 16px;
+      border: 1.5px solid rgba(124,58,237,.4);
+      background: linear-gradient(135deg,rgba(124,58,237,.18),rgba(79,70,229,.12));
+      padding: 12px 14px;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-weight: 600;
+      font-size: .875rem;
+      color: #e0d9ff;
+      gap: 8px;
+      -webkit-user-select: none;
+    }
+    .dd-bank-item:hover {
+      transform: translateY(-2px);
+      border-color: #a78bfa;
+      box-shadow: 0 8px 20px rgba(124,58,237,.3);
+    }
+    .dd-bank-item.used {
+      opacity: .22;
+      pointer-events: none;
+      transform: none;
+      box-shadow: none;
     }
 
     .drop-zone.matched {
@@ -1071,60 +1118,205 @@
 
     function renderDragBody(pairs) {
       DD_PAIRS = pairs; DD_MATCH = {};
-      const left = pairs.map(p => ({ id: p.id, text: p.left_item, img: p.left_image_url }));
+      const left  = pairs.map(p => ({ id: p.id, text: p.left_item,  img: p.left_image_url }));
       const right = shuffle(pairs.map(p => ({ id: p.id, text: p.right_item, img: p.right_image_url })));
-      return `<p class="text-xs text-white/50 text-center mb-4">ลากคำทางขวาวางให้ตรงกับทางซ้าย</p>
-  <div class="grid grid-cols-2 gap-3">
-    <div class="space-y-3">${left.map(p => `
-      <div class="glass border border-white/15 rounded-2xl p-3 flex items-center gap-2 min-h-[56px]">
-        ${p.img ? `<img src="${p.img}" class="w-8 h-8 object-contain rounded" alt=""/>` : ''}
-        <span class="font-semibold text-sm">${esc(p.text)}</span>
-        <div class="drop-zone flex-1 flex items-center justify-center text-xs text-white/30 p-1"
-          data-pid="${p.id}" id="dz-${p.id}" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="ddDrop(event,'${p.id}')">วางที่นี่</div>
-      </div>`).join('')}</div>
-    <div class="space-y-3" id="dd-right">${right.map(p => `
-      <div class="drag-item glass border border-purple-500/30 rounded-2xl p-3 min-h-[56px] flex items-center justify-center text-sm font-semibold text-center bg-purple-900/20 select-none"
+
+      return `
+  <!-- คำแนะนำ -->
+  <div class="flex items-center justify-center gap-2 mb-5">
+    <span class="text-lg">🎯</span>
+    <p class="text-xs text-white/55 font-medium">ลากคำจากด้านล่างวางลงช่องที่ตรงกัน</p>
+  </div>
+
+  <!-- คอลัมน์จับคู่: ซ้าย = คำตั้ง, ขวา = drop zone -->
+  <div class="space-y-3 mb-6">
+    ${left.map(p => `
+    <div class="flex items-stretch gap-3" style="min-height:70px">
+      <!-- Label ซ้าย -->
+      <div class="flex items-center gap-2 glass border border-white/12 rounded-2xl px-4 py-3 flex-1" style="flex:1 1 0;min-width:0">
+        ${p.img ? `<img src="${p.img}" class="w-10 h-10 object-contain rounded-xl flex-shrink-0" alt=""/>` : 
+          `<span class="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-300 text-xs font-bold flex-shrink-0">→</span>`}
+        <span class="font-semibold text-sm leading-snug">${esc(p.text)}</span>
+      </div>
+      <!-- Drop zone ขวา -->
+      <div class="drop-zone flex items-center justify-center text-xs text-white/35 font-medium px-3"
+        data-pid="${p.id}" id="dz-${p.id}"
+        ondragover="event.preventDefault();ddDragOver(this)"
+        ondragleave="ddDragLeave(this)"
+        ondrop="ddDrop(event,'${p.id}')"
+        style="flex:1 1 0;min-width:0;cursor:copy">
+        <span id="dz-label-${p.id}" class="flex items-center gap-2"><span style="font-size:1.2rem">＋</span> วางที่นี่</span>
+      </div>
+    </div>`).join('')}
+  </div>
+
+  <!-- ตะกร้า drag items -->
+  <div class="glass border border-white/10 rounded-2xl p-4 mb-5">
+    <p class="text-xs text-white/40 mb-3 font-medium">📦 รายการที่ต้องจับคู่</p>
+    <div class="grid gap-2" id="dd-bank" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr))">
+      ${right.map(p => `
+      <div class="dd-bank-item"
         id="dg-${p.id}" data-pid="${p.id}" draggable="true"
-        ondragstart="DD_DRAGGING='${p.id}';setTimeout(()=>this.classList.add('opacity-40'),0)"
-        ondragend="this.classList.remove('opacity-40');DD_DRAGGING=null"
+        ondragstart="ddDragStart(event,'${p.id}')"
+        ondragend="ddDragEnd(event,'${p.id}')"
         ontouchstart="ddTouchStart(event,'${p.id}')" ontouchmove="ddTouchMove(event)" ontouchend="ddTouchEnd(event)">
-        ${p.img ? `<img src="${p.img}" class="w-8 h-8 object-contain rounded mr-2" alt=""/>` : ''}${esc(p.text)}</div>`).join('')}
+        ${p.img ? `<img src="${p.img}" class="w-10 h-10 object-contain rounded-xl flex-shrink-0" alt=""/>` : ''}
+        <span>${esc(p.text)}</span>
+      </div>`).join('')}
     </div>
   </div>
-  <button onclick="submitDD()" class="w-full mt-5 py-4 rounded-2xl btn-grad font-bold text-sm shadow-lg">✓ ตรวจคำตอบ</button>`;
+
+  <button onclick="submitDD()" class="w-full py-4 rounded-2xl btn-grad font-bold text-sm shadow-lg">✓ ตรวจคำตอบ</button>`;
     }
+
+    /* ── helpers drag/drop desktop ── */
+    function ddDragStart(e, pid) {
+      DD_DRAGGING = pid;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => document.getElementById(`dg-${pid}`)?.classList.add('dragging'), 0);
+    }
+    function ddDragEnd(e, pid) {
+      DD_DRAGGING = null;
+      document.getElementById(`dg-${pid}`)?.classList.remove('dragging');
+    }
+    function ddDragOver(el) {
+      document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('over'));
+      el.classList.add('over');
+    }
+    function ddDragLeave(el) { el.classList.remove('over'); }
 
     function ddDrop(e, zonePid) {
       e.preventDefault();
-      const pid = DD_DRAGGING || DD_TPID; if (!pid) return;
       document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('over'));
+      const pid = DD_DRAGGING || DD_TPID; if (!pid) return;
+
+      // คืน item เดิมในช่องนี้ (ถ้ามี)
+      const prevPid = DD_MATCH[zonePid];
+      if (prevPid && prevPid !== pid) {
+        const prevEl = document.getElementById(`dg-${prevPid}`);
+        if (prevEl) { prevEl.classList.remove('used'); }
+      }
+      // ถ้า item นี้เคยถูกวางในช่องอื่น ให้ล้างช่องเก่า
+      for (const [zid, mid] of Object.entries(DD_MATCH)) {
+        if (mid === pid && zid !== zonePid) {
+          delete DD_MATCH[zid];
+          const oldDz = document.getElementById(`dz-${zid}`);
+          if (oldDz) {
+            oldDz.classList.remove('matched-ok','matched-err');
+            oldDz.innerHTML = `<span id="dz-label-${zid}" class="flex items-center gap-2"><span style="font-size:1.2rem">＋</span> วางที่นี่</span>`;
+          }
+        }
+      }
+
       DD_MATCH[zonePid] = pid;
       const pair = DD_PAIRS.find(p => p.id === pid);
       const dz = document.getElementById(`dz-${zonePid}`);
-      if (dz) { dz.innerHTML = `<span class="text-purple-300 font-semibold text-xs">${esc(pair?.right_item || '')}</span>`; dz.classList.add('border-purple-500/50', 'bg-purple-900/20'); }
-      const dg = document.getElementById(`dg-${pid}`); if (dg) dg.style.visibility = 'hidden';
+      if (dz) {
+        dz.classList.remove('matched-ok','matched-err');
+        dz.innerHTML = `
+          <div class="flex items-center gap-2 font-semibold text-sm text-purple-200 px-1">
+            ${pair?.right_image_url ? `<img src="${pair.right_image_url}" class="w-8 h-8 object-contain rounded-lg" alt=""/>` : ''}
+            <span>${esc(pair?.right_item || '')}</span>
+            <button onclick="ddClearZone('${zonePid}')" class="ml-auto text-white/30 hover:text-white/70 text-lg leading-none flex-shrink-0" title="ล้าง">✕</button>
+          </div>`;
+        dz.style.cursor = 'default';
+      }
+      const dg = document.getElementById(`dg-${pid}`);
+      if (dg) dg.classList.add('used');
       DD_TPID = null;
     }
 
-    function ddTouchStart(e, pid) { DD_TPID = pid; const el = e.currentTarget, r = el.getBoundingClientRect(); DD_CLONE = el.cloneNode(true); DD_CLONE.style.cssText = `position:fixed;top:${r.top}px;left:${r.left}px;width:${r.width}px;z-index:1000;opacity:.85;pointer-events:none;`; document.body.appendChild(DD_CLONE); el.style.opacity = '.3'; }
-    function ddTouchMove(e) { if (!DD_CLONE) return; e.preventDefault(); const t = e.touches[0]; DD_CLONE.style.top = `${t.clientY - 28}px`; DD_CLONE.style.left = `${t.clientX - 56}px`; document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('over')); document.elementFromPoint(t.clientX, t.clientY)?.closest('.drop-zone')?.classList.add('over'); }
-    function ddTouchEnd(e) { if (!DD_CLONE) return; const t = e.changedTouches[0]; DD_CLONE.remove(); DD_CLONE = null; document.getElementById(`dg-${DD_TPID}`)?.style.removeProperty('opacity'); document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('over')); const zone = document.elementFromPoint(t.clientX, t.clientY)?.closest('.drop-zone'); if (zone) ddDrop(new Event('drop'), zone.dataset.pid); }
+    function ddClearZone(zonePid) {
+      const pid = DD_MATCH[zonePid]; if (!pid) return;
+      delete DD_MATCH[zonePid];
+      const dg = document.getElementById(`dg-${pid}`);
+      if (dg) dg.classList.remove('used');
+      const dz = document.getElementById(`dz-${zonePid}`);
+      if (dz) {
+        dz.classList.remove('matched-ok','matched-err');
+        dz.innerHTML = `<span id="dz-label-${zonePid}" class="flex items-center gap-2"><span style="font-size:1.2rem">＋</span> วางที่นี่</span>`;
+        dz.style.cursor = 'copy';
+      }
+    }
+
+    /* ── touch drag ── */
+    function ddTouchStart(e, pid) {
+      DD_TPID = pid;
+      const el = e.currentTarget;
+      const r = el.getBoundingClientRect();
+      DD_CLONE = el.cloneNode(true);
+      Object.assign(DD_CLONE.style, {
+        position: 'fixed', top: r.top+'px', left: r.left+'px',
+        width: r.width+'px', zIndex: 2000, opacity: '.9',
+        pointerEvents: 'none', borderRadius: '16px',
+        boxShadow: '0 16px 40px rgba(0,0,0,.5)',
+        transform: 'scale(1.06)',
+        transition: 'none',
+      });
+      document.body.appendChild(DD_CLONE);
+      el.classList.add('used');
+    }
+    function ddTouchMove(e) {
+      if (!DD_CLONE) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      const cw = DD_CLONE.offsetWidth, ch = DD_CLONE.offsetHeight;
+      DD_CLONE.style.left = (t.clientX - cw/2) + 'px';
+      DD_CLONE.style.top  = (t.clientY - ch/2) + 'px';
+      document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('over'));
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      el?.closest('.drop-zone')?.classList.add('over');
+    }
+    function ddTouchEnd(e) {
+      if (!DD_CLONE) return;
+      const t = e.changedTouches[0];
+      DD_CLONE.remove(); DD_CLONE = null;
+      document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('over'));
+      // คืน opacity ถ้าไม่โดน drop zone
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      const zone = el?.closest('.drop-zone');
+      if (zone) {
+        ddDrop(new Event('drop'), zone.dataset.pid);
+      } else {
+        const dg = document.getElementById(`dg-${DD_TPID}`);
+        if (dg && !Object.values(DD_MATCH).includes(DD_TPID)) dg.classList.remove('used');
+        DD_TPID = null;
+      }
+    }
 
     function submitDD() {
-      if (Object.keys(DD_MATCH).length < DD_PAIRS.length) { toast(`ยังจับคู่ไม่ครบ (${Object.keys(DD_MATCH).length}/${DD_PAIRS.length})`, 'warning'); return; }
+      if (Object.keys(DD_MATCH).length < DD_PAIRS.length) {
+        toast(`ยังจับคู่ไม่ครบ (${Object.keys(DD_MATCH).length}/${DD_PAIRS.length})`, 'warning'); return;
+      }
       let correct = 0;
       DD_PAIRS.forEach(p => {
         const dz = document.getElementById(`dz-${p.id}`);
         const ok = DD_MATCH[p.id] === p.id;
-        if (ok) { correct++; dz.classList.add('matched'); dz.innerHTML = `<span class="text-green-400 text-xs font-semibold">✓ ${esc(p.right_item)}</span>`; }
-        else { if (dz) { dz.style.borderColor = '#ef4444'; dz.style.background = 'rgba(239,68,68,.1)'; dz.innerHTML = `<span class="text-red-400 text-xs font-semibold">✗</span>`; } }
+        if (ok) {
+          correct++;
+          dz?.classList.add('matched-ok');
+          if (dz) dz.innerHTML = `
+            <div class="flex items-center gap-2 font-semibold text-sm text-green-300 px-1">
+              <span class="text-green-400 text-base">✓</span>
+              ${p.right_image_url ? `<img src="${p.right_image_url}" class="w-7 h-7 object-contain rounded-lg" alt=""/>` : ''}
+              <span>${esc(p.right_item)}</span>
+            </div>`;
+        } else {
+          dz?.classList.add('matched-err');
+          if (dz) dz.innerHTML = `
+            <div class="flex items-center gap-2 font-semibold text-sm text-red-300 px-1">
+              <span class="text-red-400 text-base">✗</span>
+              <span>${esc(p.right_item)}</span>
+              <span class="text-white/30 text-xs ml-1">(ผิด)</span>
+            </div>`;
+        }
       });
       ANSWERS[QUESTIONS[Q_IDX].id] = { drag: DD_MATCH };
       const pct = Math.round(correct / DD_PAIRS.length * 100);
       if (pct === 100) confetti();
-      toast(`จับคู่ถูก ${correct}/${DD_PAIRS.length} คู่`, pct >= 80 ? 'success' : 'warning');
+      toast(`จับคู่ถูก ${correct}/${DD_PAIRS.length} คู่ 🎯`, pct >= 80 ? 'success' : 'warning');
       document.querySelector('[onclick="submitDD()"]')?.remove();
-      setTimeout(() => { Q_IDX++; renderQ(); }, 1500);
+      setTimeout(() => { Q_IDX++; renderQ(); }, 1800);
     }
 
     // ══════════════════════════════════════════════════════════════
