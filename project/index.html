@@ -913,6 +913,7 @@
           .select('*,quiz_questions(*,quiz_choices(*),quiz_drag_pairs(*))')
           .eq('id', id).single();
         QUIZ_SET = q;
+        console.log('[openQuiz] quiz_set loaded:', q?.id, q?.title, '| quiz_questions count:', q?.quiz_questions?.length, '| quiz_type:', q?.quiz_type);
         VIDEO_WATCHED = !q.video_required;
 
         // ── Memory game → เปิดหน้าเกม ──
@@ -1030,6 +1031,23 @@
         if (QUIZ_SET.shuffle_choices) qs = qs.map(q => ({ ...q, quiz_choices: q.quiz_choices ? shuffle(q.quiz_choices) : q.quiz_choices }));
         QUESTIONS = qs; Q_IDX = 0; ANSWERS = {}; T_START = Date.now();
 
+        // ── ตรวจสอบ: ถ้าไม่มีคำถาม ห้ามเริ่ม ──
+        if (QUESTIONS.length === 0) {
+          console.warn('[startQuiz] QUESTIONS is empty — quiz_set id:', QUIZ_SET.id, 'quiz_questions:', QUIZ_SET.quiz_questions);
+          setApp(`
+  <div class="min-h-screen flex items-center justify-center px-4">
+    <div class="max-w-sm w-full text-center">
+      <div class="text-6xl mb-4">📭</div>
+      <h2 class="text-xl font-bold font-kanit mb-2">ยังไม่มีคำถามในชุดนี้</h2>
+      <p class="text-white/50 text-sm mb-2">ชุดแบบทดสอบ <span class="text-white/80 font-semibold">${esc(QUIZ_SET.title)}</span></p>
+      <p class="text-white/40 text-xs mb-6">กรุณา Import คำถามจาก CSV หรือติดต่อผู้ดูแลระบบ</p>
+      <button onclick="renderHome()" class="w-full py-4 rounded-2xl btn-grad font-bold shadow-lg">🏠 กลับหน้าหลัก</button>
+    </div>
+  </div>`);
+          toast('ยังไม่มีคำถามในชุดนี้', 'warning');
+          return;
+        }
+
         if (QUIZ_SET.time_limit_seconds > 0) startTimer(QUIZ_SET.time_limit_seconds);
         renderQ();
       } catch (e) { toast('เริ่มแบบทดสอบไม่สำเร็จ', 'error'); console.error(e); }
@@ -1039,6 +1057,12 @@
     // RENDER QUESTION
     // ══════════════════════════════════════════════════════════════
     function renderQ() {
+      // ── Guard: ถ้า QUESTIONS ว่างหรือหมด ──
+      if (!QUESTIONS || QUESTIONS.length === 0) {
+        console.warn('[renderQ] QUESTIONS is empty, cannot render.');
+        toast('ไม่พบคำถามในแบบทดสอบนี้', 'error');
+        renderHome(); return;
+      }
       if (Q_IDX >= QUESTIONS.length) { finishQuiz(); return; }
       const q = QUESTIONS[Q_IDX];
       const pct = ((Q_IDX + 1) / QUESTIONS.length) * 100;
